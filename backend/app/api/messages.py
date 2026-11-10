@@ -2,11 +2,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.attachments import _get_service
 from app.core.database import get_db
 from app.core.dependencies import get_current_mailbox
 from app.models.mailbox import Mailbox
 from app.schemas.message import MessageDetail, MessageReadUpdate, MessageSummary
-from app.services.message_service import MessageService
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
@@ -22,7 +22,7 @@ def list_messages(
     mailbox: Mailbox = Depends(get_current_mailbox),
     db: Session = Depends(get_db),
 ):
-    return MessageService(db).list_for_mailbox(mailbox, limit, offset)
+    return _get_service(db).list_for_mailbox(mailbox, limit, offset)
 
 
 @router.get("/{message_id}", response_model=MessageDetail)
@@ -31,7 +31,7 @@ def get_message(
     mailbox: Mailbox = Depends(get_current_mailbox),
     db: Session = Depends(get_db),
 ):
-    message = MessageService(db).get_for_mailbox(mailbox, message_id)
+    message = _get_service(db).get_for_mailbox(mailbox, message_id)
     if message is None:
         raise _not_found()
     return message
@@ -44,7 +44,7 @@ def update_read_state(
     mailbox: Mailbox = Depends(get_current_mailbox),
     db: Session = Depends(get_db),
 ):
-    service = MessageService(db)
+    service = _get_service(db)
     message = service.get_for_mailbox(mailbox, message_id)
     if message is None:
         raise _not_found()
@@ -57,7 +57,7 @@ def delete_message(
     mailbox: Mailbox = Depends(get_current_mailbox),
     db: Session = Depends(get_db),
 ):
-    service = MessageService(db)
+    service = _get_service(db)
     message = service.get_for_mailbox(mailbox, message_id)
     if message is None:
         raise _not_found()

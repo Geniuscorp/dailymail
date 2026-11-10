@@ -8,7 +8,7 @@ Signed string: `"<timestamp>.<raw JSON body>"`, HMAC-SHA256 with `INBOUND_WEBHOO
 
 Headers: `X-DailyMail-Timestamp` (unix seconds), `X-DailyMail-Signature` (hex).
 
-Body fields: `message_id`, `sender`, `recipient`, `subject`, `text`, `html`, `received_at`.
+Body fields: `message_id`, `sender`, `recipient`, `subject`, `text`, `html`, `received_at`, and `attachments` (a list of `{filename, content_type, content_base64}`).
 
 The backend rejects deliveries older than `INBOUND_WEBHOOK_TOLERANCE_SECONDS` (default 300).
 
@@ -39,6 +39,6 @@ The backend rejects deliveries older than `INBOUND_WEBHOOK_TOLERANCE_SECONDS` (d
 
 ## Limitations
 
-- Attachments are not forwarded yet (Phase 4 adds R2 storage).
-- Messages larger than 10 MB are rejected at the SMTP level.
+- Attachments are forwarded base64-encoded. The backend keeps only allowed types (see `backend/app/services/attachment_policy.py`) and drops the rest.
+- Messages larger than 25 MB are rejected at the SMTP level.
 - If the backend returns 5xx, the Worker throws so the sending server retries; 4xx responses reject the message.

@@ -161,9 +161,12 @@ GET /attachments/{attachment_id}
 #### Download Attachment
 ```
 GET /attachments/{attachment_id}/download
+GET /attachments/{attachment_id}/download?inline=true
 ```
 
-Returns file content with appropriate Content-Type.
+Requires the owning mailbox's bearer token; other mailboxes receive 404. Bytes are streamed by the backend from R2; R2 is never exposed publicly. Responses carry `X-Content-Type-Options: nosniff` and `Cache-Control: private, no-store`. Downloads use `Content-Disposition: attachment`. `inline=true` is honoured only for PDF and images and adds `Content-Security-Policy: sandbox; default-src 'none'`.
+
+Deleting a message deletes its objects from R2.
 
 ### Webhooks
 
@@ -193,7 +196,7 @@ Body:
 
 Responses: `202 {"status": "stored"|"duplicate"|"ignored"}` (`ignored` for unknown or inactive recipients), `401` for authentication failures, `413` above `MAX_INBOUND_PAYLOAD_MB`, `503` when the secret is not configured.
 
-Attachments are not yet forwarded (Phase 4).
+Attachments are accepted as `attachments: [{filename, content_type, content_base64}]`. Each one is kept only if its extension is allowed (pdf, png, jpg, jpeg, gif, txt, doc, docx, xls, xlsx, zip), its content matches that format's signature, and it is within `MAX_ATTACHMENT_SIZE_MB`. Up to `MAX_ATTACHMENTS_PER_MESSAGE` are kept. Rejected attachments are dropped and the message is still stored. The stored MIME type comes from the allow-list, never from the sender.
 
 ### Admin Endpoints
 

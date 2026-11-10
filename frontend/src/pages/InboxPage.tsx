@@ -68,6 +68,9 @@ export default function InboxPage() {
                   <span aria-label="Não lida" className="h-2 w-2 shrink-0 rounded-full bg-blue-600" />
                 )}
                 <span className="truncate text-sm text-gray-800">{message.subject || '(sem assunto)'}</span>
+                {message.attachment_count > 0 && (
+                  <span className="shrink-0 text-xs text-gray-500">· {message.attachment_count} anexo(s)</span>
+                )}
               </div>
             </Link>
           </li>

@@ -48,3 +48,8 @@ export async function setMessageRead(id: number, isRead: boolean): Promise<Messa
 export async function deleteMessage(id: number): Promise<void> {
   await client.delete(`/messages/${id}`)
 }
+
+export async function fetchAttachment(id: number): Promise<Blob> {
+  const { data } = await client.get<Blob>(`/attachments/${id}/download`, { responseType: 'blob' })
+  return data
+}

@@ -1,9 +1,19 @@
 import PostalMime from "postal-mime";
 
-const MAX_RAW_BYTES = 10 * 1024 * 1024;
+const MAX_RAW_BYTES = 25 * 1024 * 1024;
 
 function toHex(buffer) {
   return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function toBase64(bytes) {
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < view.length; i += chunk) {
+    binary += String.fromCharCode(...view.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 async function sign(secret, timestamp, body) {
@@ -27,6 +37,13 @@ function toPayload(email, message) {
     text: email.text || null,
     html: email.html || null,
     received_at: new Date().toISOString(),
+    attachments: (email.attachments || [])
+      .filter((attachment) => attachment.content)
+      .map((attachment) => ({
+        filename: attachment.filename || null,
+        content_type: attachment.mimeType || null,
+        content_base64: toBase64(attachment.content),
+      })),
   };
 }
 

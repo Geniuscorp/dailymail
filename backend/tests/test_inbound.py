@@ -7,6 +7,7 @@ import uuid
 
 from fastapi.testclient import TestClient
 
+from app.core.config import get_settings
 from app.main import app
 
 client = TestClient(app)
@@ -116,8 +117,9 @@ class TestWebhookDelivery:
         body = b"not json"
         assert client.post(WEBHOOK, content=body, headers=_signed_headers(body)).status_code == 401
 
-    def test_oversized_payload_is_rejected(self):
-        body = b"{" + b" " * (11 * 1024 * 1024) + b"}"
+    def test_oversized_payload_is_rejected(self, monkeypatch):
+        monkeypatch.setattr(get_settings(), "max_inbound_payload_mb", 1)
+        body = b"{" + b" " * (2 * 1024 * 1024) + b"}"
         response = client.post(WEBHOOK, content=body, headers=_signed_headers(body))
         assert response.status_code == 413
 

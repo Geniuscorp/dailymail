@@ -24,3 +24,7 @@ class Message(Base):
     # Relationships
     mailbox = relationship("Mailbox", back_populates="messages")
     attachments = relationship("Attachment", back_populates="message", cascade="all, delete-orphan")
+
+    @property
+    def attachment_count(self) -> int:
+        return len(self.attachments)

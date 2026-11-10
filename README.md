@@ -100,9 +100,11 @@ npm run dev
 - ⬜ Inbox interface (frontend)
 
 ### Phase 4: Attachments
-- ⬜ Cloudflare R2 integration
-- ⬜ File storage and retrieval
-- ⬜ Secure download links
+- ✅ Cloudflare R2 integration (S3-compatible API via boto3)
+- ✅ Attachment forwarding from the Email Worker
+- ✅ Allow-list, signature check and size limits
+- ✅ Authenticated downloads and inline preview for PDF/images
+- ⬜ Validation against a real R2 bucket (requires credentials)
 
 ### Phase 5: Administration
 - ⬜ Admin dashboard

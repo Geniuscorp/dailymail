@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import AttachmentList from '../components/AttachmentList'
 import { deleteMessage, getMessage, setMessageRead } from '../services/api'
 import type { MessageDetail } from '../types'
 
@@ -120,6 +121,8 @@ export default function MessagePage() {
           </pre>
         )}
       </div>
+
+      <AttachmentList attachments={message.attachments} />
 
       <div className="flex flex-wrap gap-2">
         <button

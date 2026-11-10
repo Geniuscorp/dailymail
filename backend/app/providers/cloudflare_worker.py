@@ -3,6 +3,8 @@
 The Worker signs each delivery as HMAC-SHA256 over "<timestamp>.<raw body>"
 using INBOUND_WEBHOOK_SECRET and sends the result in X-DailyMail-Signature.
 """
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -11,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.core.config import get_settings
-from app.providers.base import InboundEmailProvider, InboundMessage, InvalidWebhookError
+from app.providers.base import InboundAttachment, InboundEmailProvider, InboundMessage, InvalidWebhookError
 
 SIGNATURE_HEADER = "x-dailymail-signature"
 TIMESTAMP_HEADER = "x-dailymail-timestamp"
@@ -37,6 +39,32 @@ def _required_str(value: Any, limit: int) -> str:
     if not text:
         raise InvalidWebhookError("Required field missing")
     return text
+
+
+def _parse_attachments(value: Any) -> tuple[InboundAttachment, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise InvalidWebhookError("attachments must be a list")
+    parsed = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise InvalidWebhookError("attachment must be an object")
+        encoded = item.get("content_base64")
+        if not isinstance(encoded, str):
+            raise InvalidWebhookError("attachment content missing")
+        try:
+            data = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise InvalidWebhookError("attachment content is not valid base64") from exc
+        parsed.append(
+            InboundAttachment(
+                filename=_optional_str(item.get("filename"), MAX_FIELD_LENGTH),
+                declared_content_type=_optional_str(item.get("content_type"), MAX_FIELD_LENGTH),
+                data=data,
+            )
+        )
+    return tuple(parsed)
 
 
 def _parse_timestamp(value: Any) -> Optional[datetime]:
@@ -98,6 +126,7 @@ class CloudflareWorkerProvider(InboundEmailProvider):
             text_body=text_body,
             html_body=html_body,
             received_at=_parse_timestamp(payload.get("received_at")),
+            attachments=_parse_attachments(payload.get("attachments")),
         )
 
 

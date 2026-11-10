@@ -29,15 +29,19 @@ class Settings(BaseSettings):
     r2_access_key_id: str = ""
     r2_secret_access_key: str = ""
     r2_bucket_name: str = "dailymail-attachments"
+    # Optional override for the S3-compatible endpoint (local testing only).
+    r2_endpoint_url: str = ""
 
     # Inbound Email
     inbound_email_provider: str = "cloudflare_worker"
     inbound_webhook_secret: str = ""
     inbound_webhook_tolerance_seconds: int = 300
-    max_inbound_payload_mb: int = 10
+    # Base64 attachments inflate the JSON payload by about a third.
+    max_inbound_payload_mb: int = 40
 
     # Attachment limits
     max_attachment_size_mb: int = 20
+    max_attachments_per_message: int = 10
 
     # Email retention
     email_retention_days: int = 30

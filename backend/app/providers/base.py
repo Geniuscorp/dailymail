@@ -1,12 +1,19 @@
 """Abstract inbound email provider interface."""
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
 
 class InvalidWebhookError(Exception):
     """Raised when a webhook fails authentication or cannot be parsed."""
+
+
+@dataclass(frozen=True)
+class InboundAttachment:
+    filename: Optional[str]
+    declared_content_type: Optional[str]
+    data: bytes
 
 
 @dataclass(frozen=True)
@@ -18,6 +25,7 @@ class InboundMessage:
     text_body: Optional[str]
     html_body: Optional[str]
     received_at: Optional[datetime]
+    attachments: tuple[InboundAttachment, ...] = field(default=())
 
 
 class InboundEmailProvider(ABC):

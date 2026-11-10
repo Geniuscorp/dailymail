@@ -7,8 +7,17 @@ from app.core.database import get_db
 from app.providers.base import InvalidWebhookError
 from app.providers.cloudflare_worker import build_inbound_provider
 from app.services.message_service import MessageService
+from app.storage import StorageNotConfiguredError, get_object_storage
+from app.storage.base import ObjectStorage, StorageError
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+
+
+def _optional_storage() -> ObjectStorage | None:
+    try:
+        return get_object_storage()
+    except StorageNotConfiguredError:
+        return None
 
 
 @router.post("/inbound-email", status_code=status.HTTP_202_ACCEPTED)
@@ -38,5 +47,11 @@ async def inbound_email(request: Request, db: Session = Depends(get_db)):
     except InvalidWebhookError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Rejected webhook delivery") from exc
 
-    result = MessageService(db).ingest(inbound)
+    try:
+        result = MessageService(db, storage=_optional_storage()).ingest(inbound)
+    except StorageError as exc:
+        # 5xx makes the Worker fail the delivery so the sending server retries it.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Attachment storage unavailable"
+        ) from exc
     return {"status": result.value}
