@@ -19,7 +19,8 @@ DailyMail allows users to create temporary email addresses, receive messages, ma
 | Database | SQLite |
 | Attachment Storage | Cloudflare R2 |
 | Frontend Hosting | Cloudflare Pages |
-| Email Reception | External provider with webhooks |
+| Email Reception | Cloudflare Email Workers + Email Routing |
+| Email Domain | Cloudflare Nameservers |
 
 ## Project Structure
 

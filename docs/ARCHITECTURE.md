@@ -92,11 +92,13 @@ DailyMail is a temporary email service with a layered architecture:
 
 ## External Integrations
 
-### Email Provider
-- Abstract interface for receiving emails
-- Webhook authentication required
-- Provider-specific parsing handled in adapter
-- Webhook signature validation mandatory
+### Cloudflare Email Workers
+- Cloudflare Email Routing receives emails for kupay.site
+- Cloudflare Email Worker (serverless function) processes incoming emails
+- Worker converts MIME email to JSON payload
+- Worker POSTs to FastAPI webhook endpoint
+- FastAPI validates and stores message + attachments
+- No provider abstraction needed (dedicated Email Worker)
 
 ## Security Measures
 
