@@ -2,14 +2,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
-from app.core.database import engine
-from app.models import Base
 from app.api import api_router
 
 settings = get_settings()
-
-# Create tables
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.app_name,
@@ -34,8 +29,3 @@ app.include_router(api_router)
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "environment": settings.environment}
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=settings.debug)
