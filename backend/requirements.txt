@@ -10,6 +10,7 @@ PyJWT==2.8.0
 python-multipart==0.0.6
 email-validator==2.2.0
 cryptography==43.0.3
+nh3==0.2.19
 boto3==1.34.8
 requests==2.31.0
 httpx==0.27.2

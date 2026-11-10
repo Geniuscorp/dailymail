@@ -1,0 +1,32 @@
+"""Abstract inbound email provider interface."""
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
+
+class InvalidWebhookError(Exception):
+    """Raised when a webhook fails authentication or cannot be parsed."""
+
+
+@dataclass(frozen=True)
+class InboundMessage:
+    provider_message_id: str
+    sender: str
+    recipient: str
+    subject: Optional[str]
+    text_body: Optional[str]
+    html_body: Optional[str]
+    received_at: Optional[datetime]
+
+
+class InboundEmailProvider(ABC):
+    """Verifies and normalises webhook deliveries from an inbound email source."""
+
+    @abstractmethod
+    def verify(self, headers: dict[str, str], raw_body: bytes) -> None:
+        """Raise InvalidWebhookError if the delivery is not authentic."""
+
+    @abstractmethod
+    def parse(self, raw_body: bytes) -> InboundMessage:
+        """Return a normalised message or raise InvalidWebhookError."""

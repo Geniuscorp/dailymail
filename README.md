@@ -88,16 +88,16 @@ npm run dev
 - ⬜ React setup with routing
 
 ### Phase 2: Mailboxes and Authentication
-- ⬜ Individual email creation
-- ⬜ Batch email creation
-- ⬜ Password-based authentication
-- ⬜ Session management
+- ✅ Individual email creation
+- ✅ Batch email creation
+- ✅ Password-based authentication
+- ✅ Token sessions (short-lived JWT)
 
 ### Phase 3: Email Reception
-- ⬜ Webhook integration
-- ⬜ Email parsing
-- ⬜ Message storage
-- ⬜ Inbox interface
+- ✅ Signed webhook (HMAC-SHA256, replay window)
+- ✅ Cloudflare Email Worker (`worker/`)
+- ✅ Message storage with duplicate protection and HTML sanitisation
+- ⬜ Inbox interface (frontend)
 
 ### Phase 4: Attachments
 - ⬜ Cloudflare R2 integration

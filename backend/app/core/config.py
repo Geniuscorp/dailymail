@@ -31,8 +31,10 @@ class Settings(BaseSettings):
     r2_bucket_name: str = "dailymail-attachments"
 
     # Inbound Email
-    inbound_email_provider: str = ""
+    inbound_email_provider: str = "cloudflare_worker"
     inbound_webhook_secret: str = ""
+    inbound_webhook_tolerance_seconds: int = 300
+    max_inbound_payload_mb: int = 10
 
     # Attachment limits
     max_attachment_size_mb: int = 20

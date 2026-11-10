@@ -1,0 +1,10 @@
+name = "dailymail-email-worker"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Set the public HTTPS origin of the FastAPI backend here (not a secret).
+[vars]
+BACKEND_URL = "https://api.kupay.site"
+
+# INBOUND_WEBHOOK_SECRET must be stored as a secret, never committed:
+#   npx wrangler secret put INBOUND_WEBHOOK_SECRET

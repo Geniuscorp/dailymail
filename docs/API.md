@@ -172,9 +172,28 @@ Returns file content with appropriate Content-Type.
 POST /webhooks/inbound-email
 ```
 
-Webhook from email provider. Signature validation required.
+Called by the Cloudflare Email Worker (see `worker/README.md`).
 
-Provider-specific format. Consult provider documentation.
+Headers:
+- `X-DailyMail-Timestamp`: unix seconds; rejected if outside `INBOUND_WEBHOOK_TOLERANCE_SECONDS`
+- `X-DailyMail-Signature`: hex HMAC-SHA256 of `"<timestamp>.<raw body>"` using `INBOUND_WEBHOOK_SECRET`
+
+Body:
+```json
+{
+  "message_id": "<unique@sender>",
+  "sender": "alice@example.com",
+  "recipient": "box@kupay.site",
+  "subject": "Olá",
+  "text": "plain body",
+  "html": "<p>html body</p>",
+  "received_at": "2026-01-10T12:00:00Z"
+}
+```
+
+Responses: `202 {"status": "stored"|"duplicate"|"ignored"}` (`ignored` for unknown or inactive recipients), `401` for authentication failures, `413` above `MAX_INBOUND_PAYLOAD_MB`, `503` when the secret is not configured.
+
+Attachments are not yet forwarded (Phase 4).
 
 ### Admin Endpoints
 
