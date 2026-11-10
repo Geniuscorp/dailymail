@@ -1,8 +1,7 @@
 """Database configuration and session management."""
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-import os
 
 from app.core.config import get_settings
 

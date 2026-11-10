@@ -14,7 +14,7 @@ from app.schemas.mailbox import (
     TokenResponse,
     PasswordUpdate,
 )
-from app.schemas.batch import BatchResponse, BatchDetailResponse
+from app.schemas.batch import BatchDetailResponse
 from app.services.mailbox_service import MailboxService
 from app.models.mailbox import Mailbox
 

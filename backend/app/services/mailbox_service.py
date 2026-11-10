@@ -9,7 +9,6 @@ from app.models.batch import Batch, BatchGenerationType
 from app.core.security import (
     hash_password,
     verify_password,
-    generate_random_address,
     generate_batch_addresses,
     is_reserved_address,
 )

@@ -27,7 +27,9 @@ async def inbound_email(request: Request, db: Session = Depends(get_db)):
     try:
         provider = build_inbound_provider()
     except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Inbound email not configured") from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Inbound email not configured"
+        ) from exc
 
     headers = {key.lower(): value for key, value in request.headers.items()}
     try:
