@@ -4,6 +4,8 @@ import os
 os.environ.setdefault("INBOUND_EMAIL_PROVIDER", "cloudflare_worker")
 os.environ.setdefault("INBOUND_WEBHOOK_SECRET", "test-webhook-secret")
 os.environ.setdefault("ACCESS_TOKEN_SECRET", "test-access-secret")
+# Suites create many mailboxes from the same client; the limiter has its own tests.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402

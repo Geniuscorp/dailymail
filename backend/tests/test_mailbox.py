@@ -1,9 +1,17 @@
 """Tests for mailbox operations."""
+import uuid
+from datetime import datetime, timedelta, timezone
+
 from fastapi.testclient import TestClient
 
+from app.core.config import get_settings
 from app.main import app
+from app.models.mailbox import Mailbox
+from app.models.message import Message
+from tests.conftest import TestingSessionLocal
 
 client = TestClient(app)
+DOMAIN = get_settings().domain
 
 
 class TestMailboxCreation:
@@ -258,3 +266,214 @@ class TestPasswordUpdate:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 401
+
+
+class TestAddressDomainValidation:
+    """Addresses must belong to the configured domain, including generated batches."""
+
+    def test_batch_random_addresses_include_domain(self):
+        response = client.post(
+            "/api/mailboxes/batch",
+            json={"quantity": 4, "password": "batchpassword123", "generation_type": "random"},
+        )
+        assert response.status_code == 201
+        addresses = response.json()["mailboxes"]
+        assert len(addresses) == 4
+        assert len(set(addresses)) == 4
+        for address in addresses:
+            assert address.endswith(f"@{DOMAIN}")
+
+    def test_batch_prefix_addresses_include_domain(self):
+        response = client.post(
+            "/api/mailboxes/batch",
+            json={
+                "quantity": 2,
+                "password": "batchpassword123",
+                "generation_type": "random",
+                "prefix": "team",
+            },
+        )
+        assert response.status_code == 201
+        addresses = response.json()["mailboxes"]
+        assert addresses == [f"team001@{DOMAIN}", f"team002@{DOMAIN}"]
+
+    def test_batch_custom_addresses_are_accepted(self):
+        response = client.post(
+            "/api/mailboxes/batch",
+            json={
+                "quantity": 2,
+                "password": "batchpassword123",
+                "generation_type": "custom",
+                "custom_addresses": [f"custom-one@{DOMAIN}", f"custom-two@{DOMAIN}"],
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["mailboxes"] == [f"custom-one@{DOMAIN}", f"custom-two@{DOMAIN}"]
+
+    def test_batch_custom_requires_addresses(self):
+        response = client.post(
+            "/api/mailboxes/batch",
+            json={"quantity": 2, "password": "batchpassword123", "generation_type": "custom"},
+        )
+        assert response.status_code == 422
+
+    def test_batch_custom_rejects_other_domain(self):
+        response = client.post(
+            "/api/mailboxes/batch",
+            json={
+                "quantity": 1,
+                "password": "batchpassword123",
+                "generation_type": "custom",
+                "custom_addresses": ["intruder@other-domain.com"],
+            },
+        )
+        assert response.status_code == 422
+
+    def test_batch_rejects_duplicate_custom_addresses(self):
+        address = f"repeated-batch@{DOMAIN}"
+        response = client.post(
+            "/api/mailboxes/batch",
+            json={
+                "quantity": 2,
+                "password": "batchpassword123",
+                "generation_type": "custom",
+                "custom_addresses": [address, address],
+            },
+        )
+        assert response.status_code == 422
+
+    def test_batch_rejects_prefix_with_at_sign(self):
+        response = client.post(
+            "/api/mailboxes/batch",
+            json={
+                "quantity": 1,
+                "password": "batchpassword123",
+                "generation_type": "random",
+                "prefix": "evil@other-domain.com",
+            },
+        )
+        assert response.status_code == 422
+
+    def test_create_single_mailbox_other_domain(self):
+        response = client.post(
+            "/api/mailboxes",
+            json={"email_address": "someone@other-domain.com", "password": "securepassword123"},
+        )
+        assert response.status_code == 422
+
+    def test_create_single_mailbox_normalizes_case(self):
+        response = client.post(
+            "/api/mailboxes",
+            json={"email_address": f"Mixed.Case@{DOMAIN.upper()}", "password": "securepassword123"},
+        )
+        assert response.status_code == 201
+        assert response.json()["email_address"] == f"mixed.case@{DOMAIN}"
+
+
+class TestAccountPersistence:
+    """Accounts persist; only the content they hold expires."""
+
+    def test_new_mailbox_has_no_expiry(self):
+        response = client.post(
+            "/api/mailboxes",
+            json={"email_address": "no-expiry@kupay.site", "password": "securepassword123"},
+        )
+        assert response.status_code == 201
+        assert response.json()["expires_at"] is None
+
+    def test_mailbox_older_than_retention_still_logs_in_and_reads_mail(self):
+        address = f"long-lived@{DOMAIN}"
+        password = "longlivedpass123"
+        created = client.post("/api/mailboxes", json={"email_address": address, "password": password})
+        assert created.status_code == 201
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        with TestingSessionLocal() as db:
+            mailbox = db.query(Mailbox).filter(Mailbox.email_address == address).one()
+            mailbox.created_at = now - timedelta(days=120)
+            mailbox.expires_at = now - timedelta(days=90)
+            db.add(
+                Message(
+                    mailbox_id=mailbox.id,
+                    provider_message_id=f"<{uuid.uuid4()}@worker>",
+                    sender="remetente@example.org",
+                    recipient=address,
+                    subject="Depois de 120 dias",
+                    received_at=now,
+                    expires_at=now + timedelta(days=30),
+                    is_read=False,
+                )
+            )
+            db.commit()
+
+        login = client.post("/api/mailboxes/login", json={"email": address, "password": password})
+        assert login.status_code == 200
+        token = login.json()["access_token"]
+
+        assert client.get("/api/mailboxes/me", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+        listing = client.get("/api/messages", headers={"Authorization": f"Bearer {token}"})
+        assert listing.status_code == 200
+        assert [item["subject"] for item in listing.json()] == ["Depois de 120 dias"]
+
+
+class TestDeletedAddresses:
+    """Deleted addresses stay registered: recreating one is a conflict, never a 500."""
+
+    def test_deleted_address_cannot_be_recreated(self):
+        address = f"deleted-{uuid.uuid4().hex[:8]}@{DOMAIN}"
+        password = "deleted-pass-123"
+        assert client.post(
+            "/api/mailboxes", json={"email_address": address, "password": password}
+        ).status_code == 201
+
+        login = client.post("/api/mailboxes/login", json={"email": address, "password": password})
+        token = login.json()["access_token"]
+        assert client.delete(
+            "/api/mailboxes/me", headers={"Authorization": f"Bearer {token}"}
+        ).status_code == 204
+
+        again = client.post("/api/mailboxes", json={"email_address": address, "password": password})
+        assert again.status_code == 409
+        assert "already exists" in again.json()["detail"]
+
+    def test_deleted_address_is_reported_as_taken_in_a_batch(self):
+        address = f"deleted-batch-{uuid.uuid4().hex[:8]}@{DOMAIN}"
+        password = "deleted-pass-123"
+        client.post("/api/mailboxes", json={"email_address": address, "password": password})
+        token = client.post(
+            "/api/mailboxes/login", json={"email": address, "password": password}
+        ).json()["access_token"]
+        client.delete("/api/mailboxes/me", headers={"Authorization": f"Bearer {token}"})
+
+        response = client.post(
+            "/api/mailboxes/batch",
+            json={
+                "quantity": 1,
+                "password": password,
+                "generation_type": "custom",
+                "custom_addresses": [address],
+            },
+        )
+        assert response.status_code == 409
+
+
+class TestBatchSizeLimits:
+    def test_custom_batch_cannot_exceed_the_limit(self):
+        addresses = [f"massa-{i}@{DOMAIN}" for i in range(101)]
+        response = client.post(
+            "/api/mailboxes/batch",
+            json={
+                "quantity": 100,
+                "password": "batchpassword123",
+                "generation_type": "custom",
+                "custom_addresses": addresses,
+            },
+        )
+        assert response.status_code == 422
+
+    def test_batch_quantity_limit_still_applies(self):
+        response = client.post(
+            "/api/mailboxes/batch",
+            json={"quantity": 101, "password": "batchpassword123", "generation_type": "random"},
+        )
+        assert response.status_code == 422

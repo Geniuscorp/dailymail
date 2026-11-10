@@ -4,6 +4,7 @@ from argon2.exceptions import VerifyMismatchError, InvalidHash
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import jwt
+import re
 import secrets
 import string
 
@@ -27,18 +28,19 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-def create_access_token(email: str, expires_delta: Optional[timedelta] = None) -> tuple[str, int]:
-    """Create a JWT access token.
+MAILBOX_SCOPE = "mailbox"
+ADMIN_SCOPE = "admin"
 
-    Returns:
-        (token, expires_in_seconds)
-    """
+
+def _create_token(subject: str, scope: str, expires_delta: Optional[timedelta], default_minutes: int) -> tuple[str, int]:
     if expires_delta is None:
-        expires_delta = timedelta(minutes=settings.access_token_expire_minutes)
+        expires_delta = timedelta(minutes=default_minutes)
 
     expire = datetime.now(timezone.utc) + expires_delta
     to_encode = {
-        "sub": email,
+        "sub": subject,
+        # A mailbox token must never open the admin API, and vice versa.
+        "scope": scope,
         "exp": expire,
     }
 
@@ -51,24 +53,77 @@ def create_access_token(email: str, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt, int(expires_delta.total_seconds())
 
 
-def decode_access_token(token: str) -> Optional[str]:
-    """Decode and verify JWT token.
-
-    Returns:
-        Email address if valid, None otherwise.
-    """
+def _decode_token(token: str, expected_scope: str) -> Optional[str]:
     try:
         payload = jwt.decode(
             token,
             settings.access_token_secret,
             algorithms=["HS256"],
         )
-        email: str = payload.get("sub")
-        if email is None:
-            return None
-        return email
     except jwt.PyJWTError:
         return None
+
+    if payload.get("scope") != expected_scope:
+        return None
+    subject: Optional[str] = payload.get("sub")
+    return subject
+
+
+def create_access_token(email: str, expires_delta: Optional[timedelta] = None) -> tuple[str, int]:
+    """Create a JWT access token for a mailbox.
+
+    Returns:
+        (token, expires_in_seconds)
+    """
+    return _create_token(
+        email, MAILBOX_SCOPE, expires_delta, settings.access_token_expire_minutes
+    )
+
+
+def decode_access_token(token: str) -> Optional[str]:
+    """Decode and verify a mailbox JWT.
+
+    Returns:
+        Email address if valid, None otherwise.
+    """
+    return _decode_token(token, MAILBOX_SCOPE)
+
+
+def create_admin_token(username: str, expires_delta: Optional[timedelta] = None) -> tuple[str, int]:
+    """Create a JWT access token for an admin user."""
+    return _create_token(
+        username, ADMIN_SCOPE, expires_delta, settings.admin_token_expire_minutes
+    )
+
+
+def decode_admin_token(token: str) -> Optional[str]:
+    """Decode and verify an admin JWT; returns the admin username."""
+    return _decode_token(token, ADMIN_SCOPE)
+
+
+# Local parts are generating by us and also come from clients (prefix/custom
+# batch addresses), so they are checked before they reach the database.
+LOCAL_PART_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+MAX_ADDRESS_LENGTH = 254
+
+
+def normalize_address(address: str, domain: str) -> str:
+    """Validate an address against the service domain and return it lowercased.
+
+    Raises:
+        ValueError: If the address is malformed or belongs to another domain.
+    """
+    candidate = (address or "").strip().lower()
+    if len(candidate) > MAX_ADDRESS_LENGTH or candidate.count("@") != 1:
+        raise ValueError(f"'{address}' is not a valid email address")
+
+    local_part, _, address_domain = candidate.partition("@")
+    if address_domain != domain.lower():
+        raise ValueError(f"Address '{candidate}' must belong to the configured domain @{domain}")
+    if not LOCAL_PART_PATTERN.match(local_part):
+        raise ValueError(f"Local part '{local_part}' is not valid")
+
+    return candidate
 
 
 def generate_random_address(length: int = 16, prefix: Optional[str] = None) -> str:

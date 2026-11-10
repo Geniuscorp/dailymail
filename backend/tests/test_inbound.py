@@ -4,6 +4,7 @@ import hmac
 import json
 import time
 import uuid
+from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
@@ -33,7 +34,8 @@ def _payload(recipient: str, **overrides) -> dict:
         "subject": "Olá",
         "text": "Corpo em texto",
         "html": "<p>Olá<script>alert(1)</script> <a href=\"javascript:alert(2)\">x</a></p>",
-        "received_at": "2026-01-10T12:00:00Z",
+        # Fresh messages: the retention window is computed from received_at.
+        "received_at": datetime.now(timezone.utc).isoformat(),
     }
     data.update(overrides)
     return data

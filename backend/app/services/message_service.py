@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Optional
 
 import nh3
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,13 @@ class IngestResult(str, Enum):
     STORED = "stored"
     DUPLICATE = "duplicate"
     IGNORED = "ignored"
+
+
+def _not_expired(now: Optional[datetime] = None):
+    """Rows whose retention window is still open (NULL expiry never expires)."""
+    reference = now or datetime.now(timezone.utc)
+    cutoff = reference.astimezone(timezone.utc).replace(tzinfo=None)
+    return or_(Message.expires_at.is_(None), Message.expires_at > cutoff)
 
 
 def sanitize_html(html: Optional[str]) -> Optional[str]:
@@ -148,7 +156,7 @@ class MessageService:
     def list_for_mailbox(self, mailbox: Mailbox, limit: int, offset: int) -> list[Message]:
         return (
             self.db.query(Message)
-            .filter(Message.mailbox_id == mailbox.id)
+            .filter(Message.mailbox_id == mailbox.id, _not_expired())
             .order_by(Message.received_at.desc(), Message.id.desc())
             .limit(limit)
             .offset(offset)
@@ -158,7 +166,7 @@ class MessageService:
     def get_for_mailbox(self, mailbox: Mailbox, message_id: int) -> Optional[Message]:
         return (
             self.db.query(Message)
-            .filter(Message.id == message_id, Message.mailbox_id == mailbox.id)
+            .filter(Message.id == message_id, Message.mailbox_id == mailbox.id, _not_expired())
             .first()
         )
 
@@ -166,7 +174,11 @@ class MessageService:
         return (
             self.db.query(Attachment)
             .join(Message, Attachment.message_id == Message.id)
-            .filter(Attachment.id == attachment_id, Message.mailbox_id == mailbox.id)
+            .filter(
+                Attachment.id == attachment_id,
+                Message.mailbox_id == mailbox.id,
+                _not_expired(),
+            )
             .first()
         )
 

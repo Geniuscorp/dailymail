@@ -57,10 +57,17 @@ POST /mailboxes
 Request:
 ```json
 {
-  "email_address": "user@example.com",
+  "email_address": "user@kupay.site",
   "password": "secure_password"
 }
 ```
+
+If `MAILBOX_CREATION_SECRET` is configured, this request also needs the
+`X-DailyMail-Creation-Secret` header (see Mailbox Creation Secret).
+
+The address must belong to the configured `DOMAIN`; other domains are rejected with `422`.
+The address is stored lowercased, and a reserved local part (`admin`, `postmaster`, ...) or an
+existing address returns `409`.
 
 #### Create Batch
 ```
@@ -76,6 +83,11 @@ Request:
   "prefix": "test"
 }
 ```
+
+Generated and custom addresses are always qualified with the configured `DOMAIN`, so this
+returns entries such as `test001@kupay.site`. With `generation_type: "custom"`,
+`custom_addresses` is required and every entry must be on that domain; duplicates return `422`.
+A batch is capped at 100 addresses, including `custom_addresses`.
 
 #### Login
 ```
@@ -200,10 +212,18 @@ Attachments are accepted as `attachments: [{filename, content_type, content_base
 
 ### Admin Endpoints
 
+Admin endpoints require an admin-scoped token: `POST /admin/login` returns it, and it
+goest in `Authorization: Bearer <token>`. Mailbox tokens are rejected by the admin
+API and admin tokens are rejected by the mailbox API. The first login bootstraps the
+admin account from `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` when no admin exists yet.
+
 #### Admin Login
 ```
 POST /admin/login
 ```
+
+Request: `{"username": "admin", "password": "..."}`. Returns the same token shape as
+mailbox login, `401` for bad credentials, `503` when no admin is configured.
 
 #### Dashboard
 ```
@@ -229,14 +249,18 @@ GET /admin/mailboxes
 
 Query parameters:
 - `search`: search by email
-- `status`: filter by status
-- `limit`: number per page
+- `status`: filter by status (`active`, `blocked`, `deleted`)
+- `limit`: number per page (default 50, max 200)
 - `offset`: pagination
+
+Returns `{total, limit, offset, items}`; each item carries `message_count`.
 
 #### List Batches
 ```
 GET /admin/batches
 ```
+
+Returns `{total, limit, offset, items}` with `mailbox_count` per batch.
 
 #### Manage Mailboxes
 ```
@@ -245,16 +269,32 @@ PATCH /admin/batches/{batch_id}/password
 DELETE /admin/mailboxes/{mailbox_id}
 ```
 
+`PATCH /admin/mailboxes/{id}` accepts `{"status": "active"|"blocked"|"deleted"}`.
+`DELETE` is a soft delete: the account stops logging in, its messages age out through
+the retention window. `PATCH /admin/batches/{id}/password` takes
+`{"new_password": "..."}` and updates every mailbox in the batch.
+
 #### Manage Messages
 ```
 GET /admin/messages
 DELETE /admin/messages/{message_id}
 ```
 
+Filters: `search` (sender, recipient or subject), `mailbox_id`, `limit`, `offset`.
+Admin views include messages already past their retention window until the sweep runs.
+`DELETE` removes the stored attachments from R2 as well; it returns `503` if storage
+is not configured and the message has attachments.
+
 #### Manage Attachments
 ```
 GET /admin/attachments
 DELETE /admin/attachments/{attachment_id}
+```
+
+Filters: `message_id`, `limit`, `offset`.
+
+Every mutating admin action is written to `admin_audit_logs` (`mailbox.status`,
+`mailbox.delete`, `batch.password`, `message.delete`, `attachment.delete`).
 ```
 
 ## Error Responses
@@ -274,16 +314,34 @@ HTTP Status Codes:
 - `403`: Forbidden
 - `404`: Not Found
 - `409`: Conflict (e.g., email already exists)
+- `413`: Payload Too Large
 - `422`: Validation Error
+- `429`: Too Many Requests (see Rate Limiting)
 - `500`: Server Error
 
 ## Rate Limiting
 
-(To be implemented in Phase 6)
+Applied per client IP and per backend process, in a sliding one-minute window:
 
-- Authentication endpoints: 10 requests per minute per IP
-- Message access: 1000 requests per hour per token
-- Admin endpoints: 100 requests per hour per token
+- `POST /mailboxes` and `POST /mailboxes/batch` share one budget
+  (`RATE_LIMIT_CREATE_PER_MINUTE`, default 10)
+- `POST /mailboxes/login` (`RATE_LIMIT_LOGIN_PER_MINUTE`, default 10)
+
+Exceeding a limit returns `429` with a `Retry-After` header (seconds). Set
+`RATE_LIMIT_ENABLED=false` only for local development. Because the counters are
+in-process, each uvicorn worker keeps its own budget.
+
+## Mailbox Creation Secret
+
+When `MAILBOX_CREATION_SECRET` is set, both creation endpoints require the shared
+secret in a header; requests without it (or with a wrong value) return `403`.
+
+```
+X-DailyMail-Creation-Secret: <MAILBOX_CREATION_SECRET>
+```
+
+Login, message and attachment endpoints do not use this header. Leaving the
+setting empty keeps creation open, which is only appropriate for local use.
 
 ## Data Models
 
@@ -294,9 +352,14 @@ HTTP Status Codes:
   "email_address": "test@kupay.site",
   "status": "active",
   "created_at": "2024-01-01T00:00:00Z",
-  "expires_at": "2024-01-31T00:00:00Z"
+  "expires_at": null
 }
 ```
+
+Mailboxes do not expire: `expires_at` is always `null` and the account stays valid
+until it is deleted. Only messages have a retention window (`EMAIL_RETENTION_DAYS`,
+30 days): once it passes they are no longer listed or downloadable, and the
+retention sweep deletes them and their attachments.
 
 ### Message
 ```json

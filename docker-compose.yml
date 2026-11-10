@@ -1,0 +1,63 @@
+name: dailymail
+
+services:
+  api:
+    build: ./backend
+    # Secrets (ACCESS_TOKEN_SECRET, R2 credentials, INBOUND_WEBHOOK_SECRET, ...)
+    # live in backend/.env; the file is optional so the stack also boots for a
+    # quick local check.
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      DATABASE_URL: sqlite:////data/dailymail.db
+      ENVIRONMENT: production
+      DEBUG: "false"
+    volumes:
+      - dailymail-data:/data
+    restart: unless-stopped
+    healthcheck:
+      # Healthy only after Alembic has run and uvicorn answers.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  web:
+    build:
+      context: ./frontend
+      # Empty base URL: the browser calls /api on the same origin, proxied to api.
+      args:
+        VITE_API_BASE_URL: ""
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Daily retention sweep (messages only: accounts never expire).
+  retention:
+    build: ./backend
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      DATABASE_URL: sqlite:////data/dailymail.db
+    volumes:
+      - dailymail-data:/data
+    command: ["sh", "-c", "while true; do python -m app.tasks.retention; sleep 86400; done"]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  dailymail-data:

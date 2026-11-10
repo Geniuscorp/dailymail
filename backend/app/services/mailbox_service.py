@@ -1,7 +1,7 @@
 """Mailbox business logic."""
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.models.mailbox import Mailbox, MailboxStatus
@@ -11,10 +11,19 @@ from app.core.security import (
     verify_password,
     generate_batch_addresses,
     is_reserved_address,
+    normalize_address,
 )
 from app.core.config import get_settings
 
 settings = get_settings()
+
+
+class MailboxValidationError(ValueError):
+    """The request is invalid (bad domain, bad address, inconsistent payload)."""
+
+
+class MailboxConflictError(ValueError):
+    """The address is reserved or already taken."""
 
 
 class MailboxService:
@@ -24,13 +33,15 @@ class MailboxService:
         self.db = db
 
     def email_exists(self, email_address: str) -> bool:
-        """Check if email address already exists."""
+        """Check if the address is already registered.
+
+        Deleted mailboxes keep their row (and the unique index on the address), so
+        they count as taken: the address cannot be recycled, and the check stays
+        consistent with the constraint instead of surfacing a 500 on insert.
+        """
         return (
-            self.db.query(Mailbox)
-            .filter(
-                Mailbox.email_address == email_address.lower(),
-                Mailbox.status != MailboxStatus.DELETED,
-            )
+            self.db.query(Mailbox.id)
+            .filter(Mailbox.email_address == email_address.lower())
             .first()
             is not None
         )
@@ -39,6 +50,17 @@ class MailboxService:
         """Check if address is valid and not reserved."""
         local_part = email_address.split("@")[0]
         return not is_reserved_address(local_part)
+
+    def _validate_address(self, email_address: str) -> str:
+        """Normalize an address and require it to belong to the service domain."""
+        try:
+            address = normalize_address(email_address, settings.domain)
+        except ValueError as exc:
+            raise MailboxValidationError(str(exc)) from exc
+
+        if not self.is_address_valid(address):
+            raise MailboxConflictError(f"Address '{address}' is reserved")
+        return address
 
     def create_mailbox(
         self,
@@ -49,31 +71,30 @@ class MailboxService:
         """Create a new mailbox.
 
         Raises:
-            ValueError: If email already exists or is invalid
+            MailboxValidationError: If the address is malformed or on another domain
+            MailboxConflictError: If the address is reserved or already exists
         """
-        email_lower = email_address.lower()
-
-        # Validate
-        if not self.is_address_valid(email_lower):
-            raise ValueError(f"Address '{email_lower}' is reserved")
+        email_lower = self._validate_address(email_address)
 
         if self.email_exists(email_lower):
-            raise ValueError(f"Email '{email_lower}' already exists")
+            raise MailboxConflictError(f"Email '{email_lower}' already exists")
 
-        # Calculate expiration (30 days from now)
-        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.email_retention_days)
-
-        # Create mailbox
+        # Mailboxes do not expire: only their content does. The account and its
+        # credentials stay valid until the owner deletes it.
         mailbox = Mailbox(
             email_address=email_lower,
             password_hash=hash_password(password),
             batch_id=batch_id,
             status=MailboxStatus.ACTIVE,
-            expires_at=expires_at,
         )
 
         self.db.add(mailbox)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError:
+            # Lost a race against a concurrent creation of the same address.
+            self.db.rollback()
+            raise MailboxConflictError(f"Email '{email_lower}' already exists") from None
         self.db.refresh(mailbox)
 
         return mailbox
@@ -90,57 +111,73 @@ class MailboxService:
 
         Returns:
             (batch, mailboxes)
+
+        Raises:
+            MailboxValidationError: If an address is malformed or on another domain
+            MailboxConflictError: If an address is reserved or already exists
         """
-        # Generate addresses
-        if generation_type == "custom" and custom_addresses:
-            addresses = custom_addresses
+        if generation_type == "custom":
+            if not custom_addresses:
+                raise MailboxValidationError("custom_addresses is required for custom generation")
+            addresses = [self._validate_address(addr) for addr in custom_addresses]
         else:
-            addresses = generate_batch_addresses(quantity, prefix)
+            addresses = [
+                self._validate_address(f"{local_part}@{settings.domain}")
+                for local_part in generate_batch_addresses(quantity, prefix)
+            ]
 
         # Check all addresses are available
+        if len(set(addresses)) != len(addresses):
+            raise MailboxValidationError("The request contains duplicate addresses")
+
         for addr in addresses:
             if self.email_exists(addr):
-                raise ValueError(f"Email '{addr}' already exists")
-            if not self.is_address_valid(addr):
-                raise ValueError(f"Address '{addr}' is reserved")
+                raise MailboxConflictError(f"Email '{addr}' already exists")
+
+        # Every mailbox in a batch shares one password, so hash it once: Argon2 is
+        # deliberately slow and hashing per mailbox made a 100-address batch take
+        # about ten seconds inside a synchronous request.
+        shared_hash = hash_password(password)
 
         # Create batch
         batch = Batch(
             quantity=len(addresses),
             generation_type=BatchGenerationType(generation_type),
-            password_hash=hash_password(password),
+            password_hash=shared_hash,
         )
 
         self.db.add(batch)
         self.db.flush()  # Get batch ID
 
-        # Create mailboxes
+        # Create mailboxes (accounts persist; only messages expire)
         mailboxes = []
-        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.email_retention_days)
 
         for addr in addresses:
             mailbox = Mailbox(
-                email_address=addr.lower(),
-                password_hash=hash_password(password),
+                email_address=addr,
+                password_hash=shared_hash,
                 batch_id=batch.id,
                 status=MailboxStatus.ACTIVE,
-                expires_at=expires_at,
             )
             mailboxes.append(mailbox)
             self.db.add(mailbox)
 
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            raise MailboxConflictError("One of the requested addresses already exists") from None
         self.db.refresh(batch)
 
         return batch, mailboxes
 
     def get_mailbox(self, email_address: str) -> Optional[Mailbox]:
-        """Get mailbox by email."""
+        """Get an usable mailbox by email (blocked and deleted accounts do not log in)."""
         return (
             self.db.query(Mailbox)
             .filter(
                 Mailbox.email_address == email_address.lower(),
-                Mailbox.status != MailboxStatus.DELETED,
+                Mailbox.status == MailboxStatus.ACTIVE,
             )
             .first()
         )
@@ -175,8 +212,9 @@ class MailboxService:
 
     def update_batch_password(self, batch: Batch, new_password: str) -> Batch:
         """Update password for all mailboxes in batch."""
-        # Update batch password hash
-        batch.password_hash = hash_password(new_password)
+        # One hash for the whole batch: they all share the same password anyway.
+        shared_hash = hash_password(new_password)
+        batch.password_hash = shared_hash
 
         # Update all mailboxes in batch
         mailboxes = (
@@ -186,7 +224,7 @@ class MailboxService:
         )
 
         for mailbox in mailboxes:
-            mailbox.password_hash = hash_password(new_password)
+            mailbox.password_hash = shared_hash
 
         self.db.commit()
         self.db.refresh(batch)

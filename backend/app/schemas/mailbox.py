@@ -16,7 +16,11 @@ class MailboxBatchCreate(BaseModel):
     password: str = Field(..., min_length=8, description="Common password for all mailboxes")
     generation_type: str = Field("random", pattern="^(random|custom)$")
     prefix: Optional[str] = Field(None, description="Prefix for custom generation")
-    custom_addresses: Optional[list[str]] = Field(None, description="Custom email addresses (for custom generation)")
+    custom_addresses: Optional[list[str]] = Field(
+        None,
+        max_length=100,
+        description="Custom email addresses (for custom generation, at most 100)",
+    )
 
 
 class MailboxLogin(BaseModel):

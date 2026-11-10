@@ -19,10 +19,18 @@ class Settings(BaseSettings):
     access_token_secret: str = "your-secret-key-change-in-production"
     access_token_expire_minutes: int = 1440
 
+    # Abuse protection (per client IP, per process).
+    rate_limit_enabled: bool = True
+    rate_limit_create_per_minute: int = 10
+    rate_limit_login_per_minute: int = 10
+    # When set, creating mailboxes requires the X-DailyMail-Creation-Secret header.
+    mailbox_creation_secret: str = ""
+
     # Admin
     admin_username: str = "admin"
     admin_password_hash: str = ""
     admin_api_secret: str = ""
+    admin_token_expire_minutes: int = 480
 
     # Cloudflare R2
     r2_account_id: str = ""

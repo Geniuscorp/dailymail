@@ -8,7 +8,7 @@ DailyMail allows users to create temporary email addresses, receive messages, ma
 
 - **Domain**: `kupay.site`
 - **Frontend**: `temp.kupay.site`
-- **Message Retention**: 30 days
+- **Message Retention**: 30 days (mailbox accounts persist until deleted)
 
 ## Architecture
 
@@ -85,7 +85,7 @@ npm run dev
 - ✅ Project structure
 - ✅ Database models
 - ✅ FastAPI setup
-- ⬜ React setup with routing
+- ✅ React setup with routing
 
 ### Phase 2: Mailboxes and Authentication
 - ✅ Individual email creation
@@ -97,7 +97,7 @@ npm run dev
 - ✅ Signed webhook (HMAC-SHA256, replay window)
 - ✅ Cloudflare Email Worker (`worker/`)
 - ✅ Message storage with duplicate protection and HTML sanitisation
-- ⬜ Inbox interface (frontend)
+- ✅ Inbox interface (frontend)
 
 ### Phase 4: Attachments
 - ✅ Cloudflare R2 integration (S3-compatible API via boto3)
@@ -107,21 +107,24 @@ npm run dev
 - ⬜ Validation against a real R2 bucket (requires credentials)
 
 ### Phase 5: Administration
-- ⬜ Admin dashboard
-- ⬜ Mailbox management
-- ⬜ Batch management
-- ⬜ Message management
+- ✅ Admin dashboard (`/api/admin/dashboard` and the `/admin` screen)
+- ✅ Mailbox management (search, filter, block/activate, soft delete)
+- ✅ Batch management (list, shared password reset)
+- ✅ Message and attachment management (search, delete with storage cleanup)
+- ✅ Admin actions written to the audit log
 
 ### Phase 6: Retention and Security
-- ⬜ Automatic cleanup
-- ⬜ Rate limiting
-- ⬜ Security hardening
-- ⬜ Testing
+- ✅ Expired messages hidden from the API and purged with their R2 objects (`python -m app.tasks.retention`, run from cron)
+- ✅ Individual message deletion removes its stored attachments
+- ✅ Rate limiting on creation and login, plus optional creation secret
+- ✅ Separate mailbox/admin token scopes and Argon2id passwords
+- ⬜ Security hardening review
+- ✅ Test suite (backend)
 
 ### Phase 7: Deployment
-- ⬜ Production configuration
-- ⬜ Containerization
-- ⬜ Documentation
+- ✅ Production configuration (env vars, single-worker SQLite, retention schedule)
+- ✅ Containerization (`backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml`)
+- ✅ Documentation (`docs/`)
 
 ## Documentation
 

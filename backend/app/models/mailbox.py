@@ -22,6 +22,9 @@ class Mailbox(Base):
     batch_id = Column(Integer, ForeignKey("batches.id"), nullable=True, index=True)
     status = Column(SQLEnum(MailboxStatus), default=MailboxStatus.ACTIVE, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    # Unused: mailboxes never expire, only their messages do. The column is kept
+    # for databases created before that rule was settled, and is always NULL for
+    # new mailboxes.
     expires_at = Column(DateTime, nullable=True, index=True)
 
     # Relationships

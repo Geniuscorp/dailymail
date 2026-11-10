@@ -3,8 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.rate_limit import rate_limited
 from app.core.security import create_access_token
-from app.core.dependencies import get_current_mailbox
+from app.core.dependencies import get_current_mailbox, require_creation_secret
 from app.schemas.mailbox import (
     MailboxCreate,
     MailboxBatchCreate,
@@ -15,13 +16,21 @@ from app.schemas.mailbox import (
     PasswordUpdate,
 )
 from app.schemas.batch import BatchDetailResponse
-from app.services.mailbox_service import MailboxService
+from app.services.mailbox_service import MailboxConflictError, MailboxService, MailboxValidationError
 from app.models.mailbox import Mailbox
 
 router = APIRouter(prefix="/mailboxes", tags=["mailboxes"])
 
 
-@router.post("", response_model=MailboxResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=MailboxResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Depends(rate_limited("mailbox-create", "rate_limit_create_per_minute")),
+        Depends(require_creation_secret),
+    ],
+)
 def create_mailbox(
     payload: MailboxCreate,
     db: Session = Depends(get_db),
@@ -32,14 +41,27 @@ def create_mailbox(
     try:
         mailbox = service.create_mailbox(payload.email_address, payload.password)
         return mailbox
-    except ValueError as e:
+    except MailboxValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+    except MailboxConflictError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(e),
         )
 
 
-@router.post("/batch", response_model=BatchDetailResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/batch",
+    response_model=BatchDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Depends(rate_limited("mailbox-create", "rate_limit_create_per_minute")),
+        Depends(require_creation_secret),
+    ],
+)
 def create_batch(
     payload: MailboxBatchCreate,
     db: Session = Depends(get_db),
@@ -64,14 +86,23 @@ def create_batch(
             mailbox_count=len(mailboxes),
             mailboxes=[m.email_address for m in mailboxes],
         )
-    except ValueError as e:
+    except MailboxValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+    except MailboxConflictError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(e),
         )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    dependencies=[Depends(rate_limited("mailbox-login", "rate_limit_login_per_minute"))],
+)
 def login_mailbox(
     payload: MailboxLogin,
     db: Session = Depends(get_db),

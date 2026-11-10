@@ -5,6 +5,7 @@ import hmac
 import json
 import time
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -47,7 +48,8 @@ def _deliver(recipient, attachments, message_id=None):
         "subject": "Com anexos",
         "text": "Veja os anexos",
         "html": None,
-        "received_at": "2026-01-10T12:00:00Z",
+        # Fresh messages: the retention window is computed from received_at.
+        "received_at": datetime.now(timezone.utc).isoformat(),
         "attachments": attachments,
     }
     body = json.dumps(payload).encode()

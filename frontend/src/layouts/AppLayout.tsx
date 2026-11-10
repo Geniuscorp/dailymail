@@ -18,15 +18,23 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <Link to="/" className="text-lg font-semibold text-gray-900">
             DailyMail
           </Link>
-          {loggedIn && (
-            <button
-              type="button"
-              onClick={logout}
+          <div className="flex items-center gap-1">
+            <Link
+              to="/admin"
               className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
             >
-              Sair
-            </button>
-          )}
+              Admin
+            </Link>
+            {loggedIn && (
+              <button
+                type="button"
+                onClick={logout}
+                className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+              >
+                Sair
+              </button>
+            )}
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>

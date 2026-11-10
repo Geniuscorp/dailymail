@@ -31,7 +31,9 @@ async function sign(secret, timestamp, body) {
 function toPayload(email, message) {
   return {
     message_id: email.messageId || `<${crypto.randomUUID()}@dailymail.worker>`,
-    sender: message.from,
+    // Bounce messages can arrive with an empty SMTP envelope sender; fall back to
+    // the From header so the backend does not reject an otherwise valid delivery.
+    sender: message.from || email.from?.address || "unknown@dailymail.worker",
     recipient: message.to,
     subject: email.subject || null,
     text: email.text || null,

@@ -37,7 +37,17 @@ INBOUND_EMAIL_PROVIDER=<provider>
 INBOUND_WEBHOOK_SECRET=<webhook-secret>
 
 ACCESS_TOKEN_SECRET=<random-secret>
+
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_CREATE_PER_MINUTE=10
+RATE_LIMIT_LOGIN_PER_MINUTE=10
+MAILBOX_CREATION_SECRET=<random-secret>
 ```
+
+`MAILBOX_CREATION_SECRET` is what stops strangers from creating mailboxes on your
+domain: when it is set, `POST /api/mailboxes` and `POST /api/mailboxes/batch`
+require the `X-DailyMail-Creation-Secret` header. Mailbox accounts never expire;
+only message content has a 30-day window.
 
 ### Frontend
 
@@ -136,9 +146,48 @@ server {
 }
 ```
 
-#### Option 2: Docker
+#### Option 2: Docker Compose
 
-(To be implemented)
+The repository ships a `docker-compose.yml` with three services: `api` (FastAPI +
+Alembic on `/data/dailymail.db`), `web` (nginx serving the built SPA and proxying
+`/api`) and `retention` (the daily retention sweep).
+
+1. Create `backend/.env` from `backend/.env.example` and fill in the secrets. Set
+   `RATE_LIMIT_ENABLED=true` and a `MAILBOX_CREATION_SECRET`, and leave
+   `DATABASE_URL` out (Compose points it at the volume):
+
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
+
+2. Build and start:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+3. The site is served on `http://localhost:8080` (put TLS in front of it with a
+   reverse proxy). The API is only reachable inside the Compose network; the SPA
+   calls `/api` on the same origin, which nginx forwards to `api:8000`.
+
+4. Check it is alive:
+
+   ```bash
+   docker compose ps
+   docker compose exec web wget -qO- http://localhost/ >/dev/null && echo web ok
+   docker compose logs --tail=50 api
+   ```
+
+Notes:
+
+- The SQLite database lives in the `dailymail-data` volume, shared by `api` and
+  `retention`. Back it up with `docker compose exec api sqlite3 /data/dailymail.db ".backup /data/backup.db"`
+  and copy the file out.
+- The API runs a single uvicorn worker: SQLite has one writer and the rate limiter
+  is per process. Do not scale `api` horizontally without moving both out.
+- Alembic runs on every `api` start, so schema upgrades ship with the image.
+- To change the public URL of the API instead of using the same-origin proxy, pass
+  `VITE_API_BASE_URL` as a build argument (it is compiled into the bundle).
 
 ### Frontend Deployment
 
@@ -173,6 +222,53 @@ After modifying models:
 alembic revision --autogenerate -m "Description"
 alembic upgrade head
 ```
+
+## Retention Cleanup
+
+Messages become unreadable through the API as soon as they pass their retention
+window (`EMAIL_RETENTION_DAYS`, 30 days by default), but the database rows and the
+R2 objects are only reclaimed by the retention sweep:
+
+```bash
+cd backend
+.venv/bin/python -m app.tasks.retention
+```
+
+Run it daily, for example with cron:
+
+```cron
+0 4 * * * cd /home/dailymail/app/backend && .venv/bin/python -m app.tasks.retention >> /var/log/dailymail-retention.log 2>&1
+```
+
+or with a systemd timer:
+
+```ini
+# /etc/systemd/system/dailymail-retention.service
+[Unit]
+Description=DailyMail retention sweep
+
+[Service]
+Type=oneshot
+User=dailymail
+WorkingDirectory=/home/dailymail/app/backend
+Environment="PATH=/home/dailymail/app/backend/venv/bin"
+ExecStart=/home/dailymail/app/backend/venv/bin/python -m app.tasks.retention
+
+# /etc/systemd/system/dailymail-retention.timer
+[Unit]
+Description=Run the DailyMail retention sweep daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+The sweep exits with `0` after running. Exit code `1` means expired messages still
+held attachments while object storage was not configured: nothing was deleted, so
+the next run retries once the R2 credentials are in place.
 
 ## Email Provider Setup
 
@@ -224,7 +320,8 @@ sqlite3 dailymail.db ".backup backup.db"
 - [ ] Configure HTTPS/SSL certificates
 - [ ] Set strong ACCESS_TOKEN_SECRET
 - [ ] Configure CORS for known domains only
-- [ ] Enable rate limiting
+- [ ] Set RATE_LIMIT_ENABLED=true and tune the per-minute limits
+- [ ] Set MAILBOX_CREATION_SECRET and use the header when creating mailboxes
 - [ ] Configure firewall rules
 - [ ] Setup monitoring and logging
 - [ ] Backup database regularly
