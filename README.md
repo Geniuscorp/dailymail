@@ -7,7 +7,7 @@ A private temporary email service for personal use and sharing with a small grou
 DailyMail allows users to create temporary email addresses, receive messages, manage attachments, and administer everything through a dashboard.
 
 - **Domain**: `kupay.site`
-- **Frontend**: `temp.kupay.site`
+- **Frontend**: `mail.kupay.site`
 - **Message Retention**: 30 days (mailbox accounts persist until deleted)
 
 ## Architecture

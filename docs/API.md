@@ -3,7 +3,7 @@
 ## Overview
 
 Base URL: `http://localhost:8000/api` (development)
-Base URL: `https://api.kupay.site/api` (production)
+Base URL: `https://mail.kupay.site/api` (production; same origin as the frontend, proxied by nginx)
 
 All requests and responses use JSON.
 

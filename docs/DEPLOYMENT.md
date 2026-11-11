@@ -26,7 +26,7 @@ DOMAIN=kupay.site
 # Must match the real URL the frontend is served from right now, not the
 # final domain if it isn't live yet (e.g. a Cloudflare Pages preview URL,
 # a VPS IP, or http://localhost:5173 during local testing).
-CORS_ALLOWED_ORIGINS=https://temp.kupay.site,http://localhost:3000,http://localhost:5173
+CORS_ALLOWED_ORIGINS=https://mail.kupay.site,http://localhost:3000,http://localhost:5173
 
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD_HASH=<argon2id-hash>
@@ -76,10 +76,13 @@ all of them).
 cp frontend/.env.example frontend/.env
 ```
 
-2. Configure API endpoint:
+2. Configure API endpoint. Leave it empty for the same-origin setup used by
+   `docker-compose.yml`/the Northflank combined service (nginx proxies `/api`
+   to the backend on the same domain); set it only if the API is genuinely on
+   its own domain (e.g. the VPS option below):
 
 ```
-VITE_API_BASE_URL=https://api.kupay.site
+VITE_API_BASE_URL=
 ```
 
 ## Local Development
@@ -231,7 +234,7 @@ npm run build
    - Build command: `npm run build`
    - Build output directory: `dist`
 
-3. Configure domain: `temp.kupay.site`
+3. Configure domain: `mail.kupay.site`
 
 ## Database Migrations
 

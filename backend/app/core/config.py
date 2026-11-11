@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # Comma-separated list of origins the frontend is actually served from.
     # Keep this in sync with wherever `web` is really reachable: a frontend
     # origin that is not listed here gets its requests rejected by CORS.
-    cors_allowed_origins: str = "https://temp.kupay.site,http://localhost:3000,http://localhost:5173"
+    cors_allowed_origins: str = "https://mail.kupay.site,http://localhost:3000,http://localhost:5173"
 
     # Security
     # No safe default on purpose: an empty or placeholder value is rejected at
