@@ -9,7 +9,7 @@ from app.providers.base import InvalidWebhookError
 from app.providers.cloudflare_worker import build_inbound_provider
 from app.services.message_service import MessageService
 from app.storage import StorageNotConfiguredError, get_object_storage
-from app.storage.base import ObjectStorage, StorageError
+from app.storage.base import ObjectStorage
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -54,11 +54,8 @@ async def inbound_email(request: Request, db: Session = Depends(get_db)):
     except InvalidWebhookError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Rejected webhook delivery") from exc
 
-    try:
-        result = MessageService(db, storage=_optional_storage()).ingest(inbound)
-    except StorageError as exc:
-        # 5xx makes the Worker fail the delivery so the sending server retries it.
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Attachment storage unavailable"
-        ) from exc
+    # ingest() never fails a delivery over attachments: a storage outage or
+    # missing R2 credentials drops just the attachment(s) it couldn't store,
+    # not the message's subject and body.
+    result = MessageService(db, storage=_optional_storage()).ingest(inbound)
     return {"status": result.value}

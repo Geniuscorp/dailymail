@@ -106,6 +106,12 @@ class MessageService:
         return IngestResult.STORED
 
     def _store_attachments(self, message: Message, inbound: InboundMessage) -> list[str]:
+        """Attach whatever can be stored; never fail the whole message over
+        an attachment. A message with a subject and body is worth keeping
+        even when storage is not configured or having a bad moment — only
+        the one attachment that could not be stored is dropped, logged, and
+        skipped, same as an attachment rejected by policy.
+        """
         candidates = inbound.attachments[: self.settings.max_attachments_per_message]
         if len(inbound.attachments) > len(candidates):
             logger.info("attachments beyond per-message limit were dropped")
@@ -120,13 +126,16 @@ class MessageService:
                 continue
 
             if self.storage is None:
-                raise StorageError("attachment storage is not available")
+                logger.warning("attachment storage not configured; dropping %r", accepted.original_filename)
+                continue
+
             key = f"{uuid.uuid4().hex}.{accepted.extension}"
             try:
                 self.storage.put(key, accepted.data, accepted.mime_type)
             except StorageError:
-                self._remove_objects(keys)
-                raise
+                logger.warning("failed to store attachment %r; dropping it", accepted.original_filename)
+                continue
+
             keys.append(key)
             message.attachments.append(
                 Attachment(

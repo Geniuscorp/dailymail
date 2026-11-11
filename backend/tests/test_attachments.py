@@ -133,19 +133,20 @@ class TestIngestion:
         assert client.post(WEBHOOK, content=body, headers=_signed(body)).status_code == 401
         assert client.get("/api/messages", headers=headers).json() == []
 
-    def test_storage_outage_fails_delivery_and_keeps_nothing(self, storage):
+    def test_storage_outage_drops_the_failing_attachment_but_keeps_the_message(self, storage):
         storage.fail_puts_after = 1
         address, headers = _mailbox()
         response = _deliver(address, [_attachment("a.pdf", PDF), _attachment("b.pdf", PDF)])
-        assert response.status_code == 503
-        assert client.get("/api/messages", headers=headers).json() == []
-        assert storage.objects == {}
+        assert response.json() == {"status": "stored"}
+        detail = client.get(f"/api/messages/{_first_message(headers)['id']}", headers=headers).json()
+        assert [a["original_filename"] for a in detail["attachments"]] == ["a.pdf"]
+        assert len(storage.objects) == 1
 
-    def test_attachments_without_configured_storage_are_refused(self, monkeypatch):
+    def test_attachments_are_dropped_when_storage_is_not_configured(self, monkeypatch):
         monkeypatch.setattr("app.api.webhooks.get_object_storage", _raise_not_configured)
         address, headers = _mailbox()
-        assert _deliver(address, [_attachment("a.pdf", PDF)]).status_code == 503
-        assert client.get("/api/messages", headers=headers).json() == []
+        assert _deliver(address, [_attachment("a.pdf", PDF)]).json() == {"status": "stored"}
+        assert _first_message(headers)["attachment_count"] == 0
 
     def test_text_only_mail_works_without_storage(self, monkeypatch):
         monkeypatch.setattr("app.api.webhooks.get_object_storage", _raise_not_configured)
