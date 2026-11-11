@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.rate_limit import rate_limited
 from app.providers.base import InvalidWebhookError
 from app.providers.cloudflare_worker import build_inbound_provider
 from app.services.message_service import MessageService
@@ -20,7 +21,13 @@ def _optional_storage() -> ObjectStorage | None:
         return None
 
 
-@router.post("/inbound-email", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/inbound-email",
+    status_code=status.HTTP_202_ACCEPTED,
+    # Signature verification only happens after the full body is read, so an
+    # unauthenticated caller could otherwise repeat large requests for free.
+    dependencies=[Depends(rate_limited("inbound-webhook", "rate_limit_webhook_per_minute"))],
+)
 async def inbound_email(request: Request, db: Session = Depends(get_db)):
     settings = get_settings()
     max_bytes = settings.max_inbound_payload_mb * 1024 * 1024

@@ -268,6 +268,68 @@ class TestPasswordUpdate:
         assert response.status_code == 401
 
 
+class TestPersistentSessions:
+    """Sessions are opaque and DB-backed: revocable, and outliving a tab close."""
+
+    def _create_and_login(self, address: str, password: str) -> str:
+        client.post("/api/mailboxes", json={"email_address": address, "password": password})
+        login = client.post("/api/mailboxes/login", json={"email": address, "password": password})
+        return login.json()["access_token"]
+
+    def test_logout_revokes_only_the_current_session(self):
+        address = f"logout-{uuid.uuid4().hex[:8]}@{DOMAIN}"
+        password = "logoutpass123"
+        token_a = self._create_and_login(address, password)
+        login_b = client.post("/api/mailboxes/login", json={"email": address, "password": password})
+        token_b = login_b.json()["access_token"]
+
+        assert token_a != token_b
+
+        logout = client.post("/api/mailboxes/logout", headers={"Authorization": f"Bearer {token_a}"})
+        assert logout.status_code == 204
+
+        revoked = client.get("/api/mailboxes/me", headers={"Authorization": f"Bearer {token_a}"})
+        assert revoked.status_code == 401
+
+        still_valid = client.get("/api/mailboxes/me", headers={"Authorization": f"Bearer {token_b}"})
+        assert still_valid.status_code == 200
+
+    def test_password_change_revokes_other_sessions_but_keeps_this_one(self):
+        address = f"revoke-{uuid.uuid4().hex[:8]}@{DOMAIN}"
+        password = "oldpassword123"
+        token_other_device = self._create_and_login(address, password)
+        login_this_device = client.post("/api/mailboxes/login", json={"email": address, "password": password})
+        token_this_device = login_this_device.json()["access_token"]
+
+        update = client.patch(
+            "/api/mailboxes/me/password",
+            json={"current_password": password, "new_password": "newpassword456"},
+            headers={"Authorization": f"Bearer {token_this_device}"},
+        )
+        assert update.status_code == 200
+
+        other_device = client.get("/api/mailboxes/me", headers={"Authorization": f"Bearer {token_other_device}"})
+        assert other_device.status_code == 401
+
+        this_device = client.get("/api/mailboxes/me", headers={"Authorization": f"Bearer {token_this_device}"})
+        assert this_device.status_code == 200
+
+    def test_deleting_a_mailbox_revokes_its_sessions(self):
+        address = f"delete-session-{uuid.uuid4().hex[:8]}@{DOMAIN}"
+        password = "deletesession123"
+        token = self._create_and_login(address, password)
+
+        assert client.delete("/api/mailboxes/me", headers={"Authorization": f"Bearer {token}"}).status_code == 204
+        assert client.get("/api/mailboxes/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+
+    def test_logout_requires_authentication(self):
+        assert client.post("/api/mailboxes/logout").status_code == 403
+
+    def test_garbage_token_is_rejected(self):
+        response = client.get("/api/mailboxes/me", headers={"Authorization": "Bearer not-a-real-token"})
+        assert response.status_code == 401
+
+
 class TestAddressDomainValidation:
     """Addresses must belong to the configured domain, including generated batches."""
 

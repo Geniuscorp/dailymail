@@ -3,6 +3,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, InvalidHash
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import hashlib
 import jwt
 import re
 import secrets
@@ -28,7 +29,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-MAILBOX_SCOPE = "mailbox"
 ADMIN_SCOPE = "admin"
 
 
@@ -39,7 +39,6 @@ def _create_token(subject: str, scope: str, expires_delta: Optional[timedelta], 
     expire = datetime.now(timezone.utc) + expires_delta
     to_encode = {
         "sub": subject,
-        # A mailbox token must never open the admin API, and vice versa.
         "scope": scope,
         "exp": expire,
     }
@@ -69,26 +68,6 @@ def _decode_token(token: str, expected_scope: str) -> Optional[str]:
     return subject
 
 
-def create_access_token(email: str, expires_delta: Optional[timedelta] = None) -> tuple[str, int]:
-    """Create a JWT access token for a mailbox.
-
-    Returns:
-        (token, expires_in_seconds)
-    """
-    return _create_token(
-        email, MAILBOX_SCOPE, expires_delta, settings.access_token_expire_minutes
-    )
-
-
-def decode_access_token(token: str) -> Optional[str]:
-    """Decode and verify a mailbox JWT.
-
-    Returns:
-        Email address if valid, None otherwise.
-    """
-    return _decode_token(token, MAILBOX_SCOPE)
-
-
 def create_admin_token(username: str, expires_delta: Optional[timedelta] = None) -> tuple[str, int]:
     """Create a JWT access token for an admin user."""
     return _create_token(
@@ -99,6 +78,23 @@ def create_admin_token(username: str, expires_delta: Optional[timedelta] = None)
 def decode_admin_token(token: str) -> Optional[str]:
     """Decode and verify an admin JWT; returns the admin username."""
     return _decode_token(token, ADMIN_SCOPE)
+
+
+# Mailbox sessions are opaque, DB-backed tokens, not JWTs: a mailbox is a
+# shared, long-lived credential (like mail.tm), so it must be revocable on
+# logout or password change instead of only expiring on its own schedule.
+def generate_session_token() -> str:
+    """Generate a new opaque mailbox session token (the value given to the client)."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_session_token(token: str) -> str:
+    """Hash a session token for storage/lookup.
+
+    The token already has 256 bits of entropy from a CSPRNG, so a fast hash is
+    enough here (unlike a password): there is nothing to brute-force offline.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 # Local parts are generating by us and also come from clients (prefix/custom

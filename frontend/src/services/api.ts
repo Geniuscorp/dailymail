@@ -31,6 +31,16 @@ export async function login(email: string, password: string): Promise<TokenRespo
   return data
 }
 
+export async function logout(): Promise<void> {
+  // Best-effort: the session is cleared client-side regardless of whether
+  // the server call succeeds (e.g. the token already expired).
+  try {
+    await client.post('/mailboxes/logout')
+  } catch {
+    // Ignored: the caller clears the local token either way.
+  }
+}
+
 export async function listMessages(limit = 50): Promise<MessageSummary[]> {
   const { data } = await client.get<MessageSummary[]>('/messages', { params: { limit } })
   return data

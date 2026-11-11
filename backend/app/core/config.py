@@ -1,6 +1,11 @@
 """Application configuration from environment variables."""
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+# Anyone who knows this value can forge a token for any mailbox or the admin
+# account. It must never be reachable in production.
+_INSECURE_DEFAULT_SECRET = "your-secret-key-change-in-production"
 
 
 class Settings(BaseSettings):
@@ -16,20 +21,26 @@ class Settings(BaseSettings):
     domain: str = "kupay.site"
 
     # Security
-    access_token_secret: str = "your-secret-key-change-in-production"
-    access_token_expire_minutes: int = 1440
+    # No safe default on purpose: an empty or placeholder value is rejected at
+    # startup in production (see validate_production_secrets below) instead of
+    # silently signing admin tokens with a value anyone can read in this file.
+    access_token_secret: str = _INSECURE_DEFAULT_SECRET
+    # How long a mailbox stays signed in without acting, like mail.tm: the
+    # session token is opaque and stored (hashed) in the database, not a JWT,
+    # so it can be revoked (logout, password change) instead of just expiring.
+    mailbox_session_expire_days: int = 90
 
     # Abuse protection (per client IP, per process).
     rate_limit_enabled: bool = True
     rate_limit_create_per_minute: int = 10
     rate_limit_login_per_minute: int = 10
+    rate_limit_webhook_per_minute: int = 120
     # When set, creating mailboxes requires the X-DailyMail-Creation-Secret header.
     mailbox_creation_secret: str = ""
 
     # Admin
     admin_username: str = "admin"
     admin_password_hash: str = ""
-    admin_api_secret: str = ""
     admin_token_expire_minutes: int = 480
 
     # Cloudflare R2
@@ -57,6 +68,19 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """Refuse to boot in production with a forgeable or missing secret."""
+        if self.environment == "production":
+            if not self.access_token_secret or self.access_token_secret == _INSECURE_DEFAULT_SECRET:
+                raise ValueError(
+                    "ACCESS_TOKEN_SECRET must be set to a unique random value in production "
+                    "(generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\")"
+                )
+            if len(self.access_token_secret) < 32:
+                raise ValueError("ACCESS_TOKEN_SECRET must be at least 32 characters in production")
+        return self
 
 
 @lru_cache()

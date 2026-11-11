@@ -4,8 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.rate_limit import rate_limited
-from app.core.security import create_access_token
-from app.core.dependencies import get_current_mailbox, require_creation_secret
+from app.core.dependencies import get_current_mailbox, get_current_mailbox_session, require_creation_secret
 from app.schemas.mailbox import (
     MailboxCreate,
     MailboxBatchCreate,
@@ -18,6 +17,7 @@ from app.schemas.mailbox import (
 from app.schemas.batch import BatchDetailResponse
 from app.services.mailbox_service import MailboxConflictError, MailboxService, MailboxValidationError
 from app.models.mailbox import Mailbox
+from app.models.mailbox_session import MailboxSession
 
 router = APIRouter(prefix="/mailboxes", tags=["mailboxes"])
 
@@ -117,13 +117,26 @@ def login_mailbox(
             detail="Invalid email or password",
         )
 
-    token, expires_in = create_access_token(mailbox.email_address)
+    # A token response, a persistent session: the frontend keeps it in
+    # localStorage and never asks for the password again until it logs out or
+    # every session is revoked (e.g. a password change elsewhere).
+    service = MailboxService(db)
+    token, expires_in = service.create_session(mailbox)
 
     return TokenResponse(
         access_token=token,
         token_type="bearer",
         expires_in=expires_in,
     )
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout_mailbox(
+    session: MailboxSession = Depends(get_current_mailbox_session),
+    db: Session = Depends(get_db),
+):
+    """Revoke the current session only; other devices stay signed in."""
+    MailboxService(db).revoke_session(session)
 
 
 @router.get("/me", response_model=MailboxDetailResponse)
@@ -137,10 +150,11 @@ def get_current_mailbox_info(
 @router.patch("/me/password", response_model=MailboxDetailResponse)
 def update_mailbox_password(
     payload: PasswordUpdate,
-    mailbox: Mailbox = Depends(get_current_mailbox),
+    mailbox_session: MailboxSession = Depends(get_current_mailbox_session),
     db: Session = Depends(get_db),
 ):
     """Update mailbox password."""
+    mailbox = mailbox_session.mailbox
     service = MailboxService(db)
 
     # Verify current password
@@ -150,8 +164,8 @@ def update_mailbox_password(
             detail="Current password is incorrect",
         )
 
-    # Update password
-    updated_mailbox = service.update_password(mailbox, payload.new_password)
+    # Update password; every other session is signed out, this one is kept.
+    updated_mailbox = service.update_password(mailbox, payload.new_password, keep_session_id=mailbox_session.id)
     return updated_mailbox
 
 

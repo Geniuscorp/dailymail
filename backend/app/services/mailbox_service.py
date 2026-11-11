@@ -1,15 +1,19 @@
 """Mailbox business logic."""
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
 
 from app.models.mailbox import Mailbox, MailboxStatus
+from app.models.mailbox_session import MailboxSession
 from app.models.batch import Batch, BatchGenerationType
 from app.core.security import (
     hash_password,
     verify_password,
     generate_batch_addresses,
+    generate_session_token,
+    hash_session_token,
     is_reserved_address,
     normalize_address,
 )
@@ -194,17 +198,75 @@ class MailboxService:
 
         return mailbox
 
-    def update_password(self, mailbox: Mailbox, new_password: str) -> Mailbox:
-        """Update mailbox password."""
+    def update_password(self, mailbox: Mailbox, new_password: str, keep_session_id: Optional[int] = None) -> Mailbox:
+        """Update mailbox password and sign out every other session.
+
+        A password change is a signal that other sessions may no longer be
+        trusted (shared computer, leaked credential); the session making the
+        request (``keep_session_id``) is left alone so the user is not logged
+        out of the device they just used.
+        """
         mailbox.password_hash = hash_password(new_password)
+        self.revoke_all_sessions(mailbox, keep_session_id=keep_session_id)
         self.db.commit()
         self.db.refresh(mailbox)
         return mailbox
 
     def delete_mailbox(self, mailbox: Mailbox) -> None:
-        """Soft delete mailbox."""
+        """Soft delete mailbox and revoke every session."""
         mailbox.status = MailboxStatus.DELETED
+        self.revoke_all_sessions(mailbox)
         self.db.commit()
+
+    # -- Persistent sessions (mail.tm-style: a password logs in once, the
+    # browser then stays signed in via a long-lived, revocable token) --------
+
+    def create_session(self, mailbox: Mailbox) -> tuple[str, int]:
+        """Issue a new persistent session token for a mailbox.
+
+        Returns:
+            (raw_token, expires_in_seconds). Only the token's hash is stored;
+            the raw value is returned once and never recoverable afterwards.
+        """
+        raw_token = generate_session_token()
+        expires_delta = timedelta(days=settings.mailbox_session_expire_days)
+        expires_at = datetime.now(timezone.utc) + expires_delta
+
+        session = MailboxSession(
+            mailbox_id=mailbox.id,
+            token_hash=hash_session_token(raw_token),
+            expires_at=expires_at.replace(tzinfo=None),
+        )
+        self.db.add(session)
+        self.db.commit()
+
+        return raw_token, int(expires_delta.total_seconds())
+
+    def get_session(self, raw_token: str) -> Optional[MailboxSession]:
+        """Look up a non-expired session by its raw token, mailbox included."""
+        token_hash = hash_session_token(raw_token)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        return (
+            self.db.query(MailboxSession)
+            .filter(
+                MailboxSession.token_hash == token_hash,
+                MailboxSession.expires_at > now,
+            )
+            .first()
+        )
+
+    def revoke_session(self, session: MailboxSession) -> None:
+        """Revoke a single session (logout)."""
+        self.db.delete(session)
+        self.db.commit()
+
+    def revoke_all_sessions(self, mailbox: Mailbox, keep_session_id: Optional[int] = None) -> None:
+        """Revoke every session for a mailbox, optionally sparing one."""
+        query = self.db.query(MailboxSession).filter(MailboxSession.mailbox_id == mailbox.id)
+        if keep_session_id is not None:
+            query = query.filter(MailboxSession.id != keep_session_id)
+        query.delete(synchronize_session=False)
 
     def get_batch(self, batch_id: int) -> Optional[Batch]:
         """Get batch by ID."""
