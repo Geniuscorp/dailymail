@@ -11,6 +11,7 @@ workers_dev = false
 # `web` (nginx) is the only public entrypoint and proxies /api/ to `api`
 # internally, exactly like the local docker-compose setup, so this must be
 # the same origin the browser uses for the site, not a dedicated API host.
+[vars]
 BACKEND_URL = "https://mail.kupay.site"
 
 # INBOUND_WEBHOOK_SECRET must be stored as a secret, never committed:
