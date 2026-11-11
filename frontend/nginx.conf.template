@@ -9,9 +9,14 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
-    # API requests go to the backend container, same origin for the browser.
+    # API requests are proxied to the backend so the browser stays on one origin
+    # (no CORS, cookies and relative /api paths keep working).
+    #
+    # API_UPSTREAM is substituted by the nginx image entrypoint from the
+    # environment: "api:8000" under docker compose, "dailymail:8000" when the
+    # service runs on a platform that names the backend container differently.
     location /api/ {
-        proxy_pass http://api:8000;
+        proxy_pass http://${API_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

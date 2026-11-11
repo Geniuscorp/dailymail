@@ -13,7 +13,10 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# The upstream is rendered from this template at container start, so the same
+# image works with a differently named backend service.
+ENV API_UPSTREAM=api:8000
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
