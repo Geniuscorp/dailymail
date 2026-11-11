@@ -4,9 +4,10 @@
 
 - Python 3.11+
 - Node.js 18+
-- Cloudflare account with R2 enabled
-- Email provider account (to be selected)
-- Domain DNS configured (kupay.site)
+- A Cloudflare account for the domain (`kupay.site`), with:
+  - **R2** enabled (attachment storage)
+  - **Email Routing** enabled (inbound mail → the Email Worker in `worker/`)
+- Domain DNS on Cloudflare Nameservers
 
 ## Environment Configuration
 
@@ -36,7 +37,7 @@ R2_ACCESS_KEY_ID=<your-key>
 R2_SECRET_ACCESS_KEY=<your-secret>
 R2_BUCKET_NAME=dailymail-attachments
 
-INBOUND_EMAIL_PROVIDER=<provider>
+INBOUND_EMAIL_PROVIDER=cloudflare_worker
 INBOUND_WEBHOOK_SECRET=<webhook-secret>
 
 # Required in production; the app refuses to start without a real value here
@@ -308,17 +309,71 @@ the next run retries once the R2 credentials are in place.
 
 ## Email Provider Setup
 
-(Provider-specific steps to be documented once provider is selected)
+Inbound mail is handled entirely by Cloudflare: **Email Routing** receives
+it for the domain and hands it to a dedicated **Email Worker**
+(`worker/`), which converts the MIME message to JSON, signs it, and POSTs
+it to `POST /api/webhooks/inbound-email`. There is no provider abstraction
+to swap here by design — see `worker/README.md` for the exact contract.
+
+1. Install and configure the Worker (full steps in `worker/README.md`):
+   ```bash
+   cd worker
+   npm install
+   ```
+2. Set `BACKEND_URL` in `worker/wrangler.toml` to the site's real public
+   origin. With the Docker Compose / combined-service deployment this is
+   the **same domain the browser uses** (nginx proxies `/api` internally) —
+   there is no separate `api.*` subdomain unless you deploy the API as its
+   own publicly reachable service.
+3. Store the shared secret (must equal the backend's `INBOUND_WEBHOOK_SECRET`):
+   ```bash
+   npx wrangler secret put INBOUND_WEBHOOK_SECRET
+   ```
+4. Deploy:
+   ```bash
+   npx wrangler deploy
+   ```
+5. In the Cloudflare dashboard for the domain: **Email** → **Email Routing**
+   → **Enable Email Routing** (this adds the MX records automatically) →
+   add a routing rule, `*@kupay.site` (or specific addresses) → **Send to a
+   Worker** → the Worker deployed above.
+
+A bounce from the receiving mail server citing a `4xx`/`5xx` and a status
+code (e.g. `"Delivery rejected by backend (413)"`) means the **Worker**
+got a non-2xx from the API — check the backend logs for that status code
+first; a `413` almost always means `client_max_body_size` in nginx (see
+below), not the application's own `MAX_INBOUND_PAYLOAD_MB`.
 
 ## Cloudflare R2 Setup
 
-1. Create bucket: `dailymail-attachments`
+Without this configured, inbound attachments are silently dropped (the
+message itself is still delivered and stored — see
+[Architecture](ARCHITECTURE.md#attachment-storage)).
 
-2. Generate API token with S3 access
-
-3. Store credentials in environment variables
-
-4. (Optional) Configure CORS for direct uploads
+1. Cloudflare dashboard → account level (not inside the domain's settings)
+   → **R2 Object Storage**. First use requires accepting the R2
+   subscription (free up to 10GB storage / 1M Class A / 10M Class B
+   operations per month — comfortably above personal use; you are only
+   billed past that).
+2. **Create bucket**, name: `dailymail-attachments`, location: Automatic.
+3. **Manage R2 API Tokens** → **Create API Token**:
+   - Permissions: **Object Read & Write**
+   - Specify bucket(s): `dailymail-attachments`
+   - On creation, Cloudflare shows the **Access Key ID** and **Secret
+     Access Key** exactly once — save them immediately.
+4. The **Account ID** is shown on the R2 overview page (or in the
+   dashboard's URL).
+5. Set on the backend service's environment:
+   ```
+   R2_ACCOUNT_ID=<account-id>
+   R2_ACCESS_KEY_ID=<access-key-id>
+   R2_SECRET_ACCESS_KEY=<secret-access-key>
+   R2_BUCKET_NAME=dailymail-attachments
+   ```
+   Double-check the variable *names* exactly — a typo (e.g.
+   `R2_SECRET_ACCESS` missing `_KEY`) leaves the field unset with no
+   startup error; `get_object_storage()` just treats R2 as unconfigured.
+6. Restart the backend service so it picks up the new variables.
 
 ## Monitoring
 
@@ -354,15 +409,17 @@ sqlite3 dailymail.db ".backup backup.db"
 
 - [ ] Generate new ADMIN_PASSWORD_HASH
 - [ ] Configure HTTPS/SSL certificates
-- [ ] Set strong ACCESS_TOKEN_SECRET
-- [ ] Configure CORS for known domains only
+- [ ] Set a real, 32+ character ACCESS_TOKEN_SECRET (production refuses to boot without one)
+- [ ] Set CORS_ALLOWED_ORIGINS to the frontend's actual live domain(s), comma-separated
 - [ ] Set RATE_LIMIT_ENABLED=true and tune the per-minute limits
 - [ ] Set MAILBOX_CREATION_SECRET and use the header when creating mailboxes
+- [ ] Confirm `--forwarded-allow-ips` is set correctly for the actual proxy topology (see Docker Compose notes below) — otherwise the rate limiter becomes one shared budget for every visitor
+- [ ] Set `client_max_body_size` in nginx above `MAX_INBOUND_PAYLOAD_MB` (nginx's own default of 1MB otherwise blocks any email with an attachment)
 - [ ] Configure firewall rules
 - [ ] Setup monitoring and logging
 - [ ] Backup database regularly
 - [ ] Configure email provider webhook validation
-- [ ] Test webhook delivery
+- [ ] Test webhook delivery, including one with an attachment
 - [ ] Review and harden nginx configuration
 
 ## Troubleshooting
@@ -380,14 +437,24 @@ sqlite3 dailymail.db ".backup backup.db"
 
 ### Email not received
 
-- Check webhook configuration
-- Verify INBOUND_WEBHOOK_SECRET
-- Review provider logs
-- Test provider webhook delivery
+- Check the Cloudflare Worker's logs (dashboard → Workers & Pages → the
+  Worker → Logs) for the actual response status the backend returned
+- A bounce naming a status code (e.g. `"rejected by backend (413)"`) means
+  the backend rejected the Worker's request — check `client_max_body_size`
+  in nginx first for a `413` (see Cloudflare R2 Setup / Email Provider
+  Setup above), then the backend logs for anything else
+- Verify `BACKEND_URL` in `worker/wrangler.toml` actually points at the
+  live public origin (redeploy with `npx wrangler deploy` after changing it)
+- Verify `INBOUND_WEBHOOK_SECRET` matches on both sides
+- Confirm the Email Routing rule actually points at this Worker
 
-### Attachment upload fails
+### Attachment upload fails / attachments are missing from a message
 
-- Check R2 credentials
-- Verify bucket name
-- Check file size limits
-- Review R2 CORS configuration
+- A missing R2 configuration or a storage failure no longer fails the
+  whole delivery — the message arrives without that attachment. Check the
+  backend logs for a line like `attachment storage not configured;
+  dropping '<filename>'` or `failed to store attachment`
+- Check the 4 `R2_*` variable **names** are exactly right (a typo leaves
+  the value unset with no startup error)
+- Verify the bucket name matches `R2_BUCKET_NAME`
+- Check `MAX_ATTACHMENT_SIZE_MB` / `MAX_ATTACHMENTS_PER_MESSAGE`

@@ -16,7 +16,9 @@ DailyMail is a temporary email service with a layered architecture:
 1. **Separation of Concerns**: Each layer has clear responsibilities
 2. **Provider Abstraction**: Email and storage providers are abstracted
 3. **Security First**: Passwords hashed, webhooks validated, access controlled
-4. **Stateless API**: Sessions via tokens, not server-side state
+4. **Sessions via tokens, revocable on purpose**: mailbox sessions are opaque
+   and DB-backed (not a stateless JWT) specifically so logout, a password
+   change or account deletion take effect immediately, not just on expiry
 5. **Simple but Scalable**: SQLite for MVP, easy migration to PostgreSQL later
 
 ## Database Schema
@@ -28,6 +30,17 @@ DailyMail is a temporary email service with a layered architecture:
 - Linked to a batch (optional)
 - Password protected with Argon2id
 - Status: active, blocked, deleted
+
+#### mailbox_sessions
+- One row per active login: `mailbox_id`, a SHA-256 hash of the opaque session
+  token (the raw token is returned once, at login, and never stored), and an
+  expiry (`MAILBOX_SESSION_EXPIRE_DAYS`, 90 days by default)
+- Looked up directly by hash on every authenticated request — not decoded
+  like a JWT — which is what lets a session be revoked (logout, password
+  change, account deletion) instead of only expiring on its own schedule
+- A fast hash (not Argon2) is appropriate here: the token already has 256
+  bits of entropy from a CSPRNG, so there is nothing to brute-force offline,
+  unlike a human-chosen password
 
 #### batches
 - Represents a group of emails created together
@@ -95,22 +108,41 @@ nginx's own `proxy_buffering off` reach).
 ## Authentication
 
 ### Mailbox Access
-- Email + password based
-- Generates short-lived JWT token
-- Token included in subsequent requests
+- Email + password based, checked once: at `POST /mailboxes` (creation) and
+  `POST /mailboxes/login`
+- Login returns an opaque, long-lived session token (see `mailbox_sessions`
+  above), not a JWT — the frontend keeps it in `localStorage`, so the inbox
+  stays open across browser restarts instead of asking for the password
+  again on every visit
+- `POST /mailboxes/logout` revokes only that one session; changing the
+  password revokes every *other* session for the mailbox; deleting the
+  mailbox revokes all of them
 
 ### Admin Access
 - Username + password with Argon2id hashing
-- Separate admin token
-- All admin actions logged
+- Separate admin-scoped JWT (short-lived, `ADMIN_TOKEN_EXPIRE_MINUTES`) —
+  deliberately a different mechanism from mailbox sessions, since an
+  operator session is not meant to outlive the browser tab the way a
+  mailbox's is
+- Mailbox tokens and admin tokens are mutually rejected by each other's API
+- All admin actions logged to `admin_audit_logs`
 
 ## Storage
 
 ### Attachment Storage
-- Files stored in Cloudflare R2
-- Database stores only metadata and reference key
-- Downloads use signed/authenticated URLs
-- File names randomized for security
+- Files stored in Cloudflare R2 (S3-compatible API via boto3)
+- Database stores only metadata and reference key; storage keys are random
+  (`uuid4().hex`), never derived from the original filename
+- Downloads are streamed by the backend through an authenticated route; R2
+  itself is never exposed publicly
+- Attachment storage is best-effort, not all-or-nothing: an attachment is
+  validated by file signature (not the sender's claimed MIME type) and
+  dropped — logged, not raised — if it fails policy, if R2 is not
+  configured, or if the upload itself fails. The message's subject and body
+  are always kept regardless; only the one problem attachment is missing.
+  This matters because the alternative (failing the whole delivery) is
+  surfaced to the sender as an SMTP bounce, which is worse than a message
+  arriving without one attachment
 
 ## External Integrations
 
@@ -125,29 +157,49 @@ nginx's own `proxy_buffering off` reach).
 ## Security Measures
 
 1. **Password Storage**: Argon2id hashing
-2. **Rate Limiting**: Applied to authentication endpoints
-3. **CORS**: Restricted to known frontend domains
+2. **Rate Limiting**: Applied to mailbox creation, login and the inbound
+   webhook, per client IP, in-process (see Scalability below). Correct IP
+   attribution requires the proxy in front of uvicorn to be explicitly
+   trusted (`--forwarded-allow-ips`, set in `backend/Dockerfile`) — without
+   it, every request looks like it comes from the proxy's own address and
+   the limiter becomes one shared budget for every visitor instead of one
+   per client
+3. **CORS**: Allow-listed origins via `CORS_ALLOWED_ORIGINS`, not hardcoded
 4. **Input Validation**: Pydantic schemas for all inputs
 5. **SQL Injection**: Protected via SQLAlchemy ORM
-6. **XSS Prevention**: HTML content sanitized before storage
-7. **Path Traversal**: Filenames never used directly in paths
-8. **Webhook Validation**: Signature verification before processing
-9. **Token Expiration**: Short-lived access tokens
-10. **Audit Logging**: Admin actions recorded
+6. **XSS Prevention**: HTML sanitized before storage (`nh3`, allow-listed
+   tags/schemes) and rendered in a sandboxed iframe with its own CSP on the
+   frontend — defence in depth, not just one layer
+7. **Path Traversal**: Filenames never used directly in storage paths
+8. **Webhook Validation**: HMAC-SHA256 signature and timestamp-tolerance
+   check before the payload is parsed
+9. **Token Secret**: the app refuses to start in production
+   (`ENVIRONMENT=production`) with a missing, empty or placeholder
+   `ACCESS_TOKEN_SECRET`, or one under 32 characters
+10. **Session Revocation**: mailbox sessions are opaque and DB-backed, so
+    logout, a password change or account deletion take effect immediately —
+    unlike a stateless JWT, which stays valid until it expires on its own
+11. **Audit Logging**: Admin actions recorded in `admin_audit_logs`
 
 ## Scalability Considerations
 
-### Current (MVP)
-- SQLite database
-- Single process backend
-- File-based storage simulation
+### Current (single process by design)
+- SQLite with a single pooled connection (`StaticPool`): one writer for the
+  whole app
+- Rate limiting counters live in process memory (`app/core/rate_limit.py`)
+- The SSE push fan-out (`app/core/events.py`) is also in-process pub/sub
 
-### Future Improvements
-- PostgreSQL for production
-- Multi-process/multi-server backend
-- Redis for caching and rate limiting
-- Cloudflare R2 for production storage
-- Message queue for background jobs
+These three are the reason the API intentionally runs as **one** uvicorn
+worker (see `backend/Dockerfile`). Mailbox sessions, by contrast, are
+already DB-backed and would scale across processes fine as-is.
+
+### Path to more than one process
+1. **PostgreSQL**: replaces SQLite's single-writer limitation
+2. **Redis**: shared rate-limit counters, replacing the in-process limiter
+3. **Redis pub/sub** (or similar): replaces the in-process SSE broker, so a
+   push reaches a subscriber regardless of which process holds it
+4. **Load Balancer**: multiple backend instances
+5. **CDN**: static asset caching
 
 ## Error Handling
 

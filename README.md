@@ -1,14 +1,15 @@
 # DailyMail
 
-A private temporary email service for personal use and sharing with a small group of friends.
+A private temporary email service for personal use and sharing with a small group of friends — create an address with a password, receive mail instantly, and never think about it again.
 
 ## Overview
 
-DailyMail allows users to create temporary email addresses, receive messages, manage attachments, and administer everything through a dashboard.
+DailyMail lets anyone create a temporary `@kupay.site` address protected by a password, read incoming mail (text, HTML and attachments) the moment it arrives, and manage the account themselves — no admin intervention needed for day-to-day use.
 
 - **Domain**: `kupay.site`
 - **Frontend**: `mail.kupay.site`
-- **Message Retention**: 30 days (mailbox accounts persist until deleted)
+- **Message retention**: 30 days (mailbox accounts persist until the owner deletes them)
+- **Sessions**: a password is only needed at account creation and at login — after that, an opaque, revocable session (not a JWT) keeps the browser signed in for 90 days, like mail.tm
 
 ## Architecture
 
@@ -18,9 +19,9 @@ DailyMail allows users to create temporary email addresses, receive messages, ma
 | Backend | Python + FastAPI |
 | Database | SQLite |
 | Attachment Storage | Cloudflare R2 |
-| Frontend Hosting | Cloudflare Pages |
-| Email Reception | Cloudflare Email Workers + Email Routing |
+| Email Reception | Cloudflare Email Routing + a dedicated Email Worker (`worker/`) |
 | Email Domain | Cloudflare Nameservers |
+| Deployment | Docker Compose (`api` + `web` + `retention`), nginx serving the SPA and proxying `/api` same-origin |
 
 ## Project Structure
 
@@ -29,13 +30,13 @@ dailymail/
 ├── backend/           # Python FastAPI backend
 │   ├── app/
 │   │   ├── api/       # API routes
-│   │   ├── core/      # Configuration and database
+│   │   ├── core/      # Configuration, database, auth, rate limiting, SSE broker
 │   │   ├── models/    # SQLAlchemy models
 │   │   ├── schemas/   # Pydantic schemas
 │   │   ├── services/  # Business logic
 │   │   ├── providers/ # External provider abstractions
-│   │   ├── storage/   # Storage providers
-│   │   ├── tasks/     # Background tasks
+│   │   ├── storage/   # Storage providers (R2)
+│   │   ├── tasks/     # Background tasks (retention sweep)
 │   │   └── main.py    # FastAPI application
 │   ├── migrations/    # Alembic migrations
 │   ├── tests/         # Test suite
@@ -45,16 +46,18 @@ dailymail/
 │   │   ├── components/
 │   │   ├── pages/
 │   │   ├── services/
-│   │   ├── hooks/
 │   │   ├── layouts/
 │   │   ├── types/
 │   │   └── App.tsx
+│   ├── nginx.conf.template
 │   └── package.json
+├── worker/            # Cloudflare Email Worker (receives mail, signs and forwards it)
+├── scripts/           # Operational scripts (e.g. verify-inbound.sh)
 ├── docs/              # Documentation
 │   ├── ARCHITECTURE.md
 │   ├── API.md
 │   └── DEPLOYMENT.md
-└── README.md
+└── docker-compose.yml
 ```
 
 ## Development Setup
@@ -79,49 +82,39 @@ cp .env.example .env
 npm run dev
 ```
 
-## Features (Planned)
+## Features
 
-### Phase 1: Foundation (Current)
-- ✅ Project structure
-- ✅ Database models
-- ✅ FastAPI setup
-- ✅ React setup with routing
+### Mailboxes and sessions
+- ✅ Self-service account creation from the site (`/create`), with automatic login
+- ✅ Individual and batch email creation via the API
+- ✅ Password-based authentication; Argon2id hashing
+- ✅ Persistent, revocable sessions (opaque tokens stored hashed in `mailbox_sessions`, not JWT) — survive browser restarts, valid 90 days by default
+- ✅ Logout revokes only the current session; a password change revokes every *other* session; deleting the account revokes all of them
+- ✅ Self-service settings (`/account`): change password, delete account
+- ✅ Quick account switcher (create or log into another mailbox without leaving the page)
 
-### Phase 2: Mailboxes and Authentication
-- ✅ Individual email creation
-- ✅ Batch email creation
-- ✅ Password-based authentication
-- ✅ Token sessions (short-lived JWT)
+### Email reception
+- ✅ Signed webhook (HMAC-SHA256, replay window) between the Cloudflare Email Worker and the API
+- ✅ Message storage with duplicate protection and HTML sanitisation (XSS-safe, sandboxed rendering)
+- ✅ Real-time inbox: new mail is pushed to the browser over Server-Sent Events the instant it is stored, with a slow fallback poll as a safety net — no manual refresh needed
+- ✅ Attachments: PDFs, images and common office/archive formats, validated by file signature (not by the sender's claimed type), stored in Cloudflare R2
+- ✅ Best-effort attachment delivery: a storage failure or unconfigured R2 drops just that attachment, never the whole message
 
-### Phase 3: Email Reception
-- ✅ Signed webhook (HMAC-SHA256, replay window)
-- ✅ Cloudflare Email Worker (`worker/`)
-- ✅ Message storage with duplicate protection and HTML sanitisation
-- ✅ Inbox interface (frontend)
-
-### Phase 4: Attachments
-- ✅ Cloudflare R2 integration (S3-compatible API via boto3)
-- ✅ Attachment forwarding from the Email Worker
-- ✅ Allow-list, signature check and size limits
-- ✅ Authenticated downloads and inline preview for PDF/images
-- ⬜ Validation against a real R2 bucket (requires credentials)
-
-### Phase 5: Administration
-- ✅ Admin dashboard (`/api/admin/dashboard` and the `/admin` screen)
+### Administration
+- ✅ Admin dashboard (`/api/admin/dashboard` and the `/admin` screen, kept out of the main navigation)
 - ✅ Mailbox management (search, filter, block/activate, soft delete)
 - ✅ Batch management (list, shared password reset)
 - ✅ Message and attachment management (search, delete with storage cleanup)
-- ✅ Admin actions written to the audit log
+- ✅ Every admin action written to an audit log
 
-### Phase 6: Retention and Security
-- ✅ Expired messages hidden from the API and purged with their R2 objects (`python -m app.tasks.retention`, run from cron)
-- ✅ Individual message deletion removes its stored attachments
-- ✅ Rate limiting on creation and login, plus optional creation secret
-- ✅ Separate mailbox/admin token scopes and Argon2id passwords
-- ⬜ Security hardening review
-- ✅ Test suite (backend)
+### Security
+- ✅ Rate limiting on creation, login and the inbound webhook, plus an optional creation secret
+- ✅ Separate mailbox/admin token scopes; the app refuses to start in production with a missing or placeholder `ACCESS_TOKEN_SECRET`
+- ✅ Configurable CORS allow-list (`CORS_ALLOWED_ORIGINS`), no hardcoded domain
+- ✅ Correct client-IP attribution behind the bundled nginx proxy, so the rate limiter can't be bypassed or turned into a shared budget for every visitor
+- ✅ Test suite (backend): 115+ tests covering auth, sessions, attachments, webhooks, retention and the SSE push
 
-### Phase 7: Deployment
+### Deployment
 - ✅ Production configuration (env vars, single-worker SQLite, retention schedule)
 - ✅ Containerization (`backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml`)
 - ✅ Documentation (`docs/`)
@@ -133,13 +126,16 @@ See the `docs/` folder for detailed documentation:
 - [API Reference](docs/API.md)
 - [Deployment Guide](docs/DEPLOYMENT.md)
 
+Interactive API docs (Swagger UI) are also served live at `/docs` on the same domain as the site.
+
 ## Security
 
 - All passwords are hashed with Argon2id
-- Webhook signatures are validated
-- Attachment uploads are restricted by type and size
+- Webhook signatures are validated (HMAC-SHA256, with a replay-tolerance window)
+- Mailbox sessions are opaque, hashed at rest, and individually revocable
+- Attachment uploads are restricted by allow-listed type and size, verified by file signature
 - Admin operations are logged
-- Temporary access tokens with expiration
+- Production refuses to boot with an insecure or missing token secret
 
 ## License
 
@@ -147,4 +143,4 @@ Private project
 
 ## Contributing
 
-Development is ongoing. See the implementation specification for details.
+Development is ongoing. See the `docs/` folder for architecture and API details before making changes.

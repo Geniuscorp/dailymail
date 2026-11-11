@@ -5,7 +5,11 @@
 Base URL: `http://localhost:8000/api` (development)
 Base URL: `https://mail.kupay.site/api` (production; same origin as the frontend, proxied by nginx)
 
-All requests and responses use JSON.
+All requests and responses use JSON, except `GET /messages/stream` (Server-Sent Events).
+
+Interactive, always-up-to-date docs (Swagger UI) are served live at `/docs`
+on the same origin — this file is a narrative companion, not the source of
+truth for request/response shapes.
 
 ## Health Check
 
@@ -176,6 +180,20 @@ Request:
 DELETE /messages/{message_id}
 ```
 
+#### Real-time Push (Server-Sent Events)
+```
+GET /messages/stream
+```
+
+Requires authentication. Keeps an SSE connection open and sends
+`event: ready` once connected, then `event: new_message` the instant a new
+message is stored for this mailbox — the frontend reacts by re-fetching
+`GET /messages` rather than the event itself carrying the message. Sends a
+`: keep-alive` comment roughly every 20s when idle. The frontend is
+expected to reconnect (with backoff) on a dropped connection, and also
+keeps a slow fallback poll in case a stream silently stalls without
+visibly dropping (e.g. an intermediate proxy buffering the response).
+
 ### Attachments
 
 #### Get Attachment Info
@@ -219,14 +237,22 @@ Body:
 }
 ```
 
-Responses: `202 {"status": "stored"|"duplicate"|"ignored"}` (`ignored` for unknown or inactive recipients), `401` for authentication failures, `413` above `MAX_INBOUND_PAYLOAD_MB`, `503` when the secret is not configured.
+Responses: `202 {"status": "stored"|"duplicate"|"ignored"}` (`ignored` for unknown or inactive recipients), `401` for authentication failures, `413` above `MAX_INBOUND_PAYLOAD_MB`, `429` above `RATE_LIMIT_WEBHOOK_PER_MINUTE`, `503` when the secret is not configured.
 
-Attachments are accepted as `attachments: [{filename, content_type, content_base64}]`. Each one is kept only if its extension is allowed (pdf, png, jpg, jpeg, gif, txt, doc, docx, xls, xlsx, zip), its content matches that format's signature, and it is within `MAX_ATTACHMENT_SIZE_MB`. Up to `MAX_ATTACHMENTS_PER_MESSAGE` are kept. Rejected attachments are dropped and the message is still stored. The stored MIME type comes from the allow-list, never from the sender.
+A `413` here is the *application's* limit; nginx (or any reverse proxy in
+front of uvicorn) has its own request body size cap — 1MB by default —
+which must be raised independently (`client_max_body_size`) or it rejects
+large deliveries before the application ever sees them. See the
+deployment guide.
+
+Attachments are accepted as `attachments: [{filename, content_type, content_base64}]`. Each one is kept only if its extension is allowed (pdf, png, jpg, jpeg, gif, txt, doc, docx, xls, xlsx, zip), its content matches that format's signature, and it is within `MAX_ATTACHMENT_SIZE_MB`. Up to `MAX_ATTACHMENTS_PER_MESSAGE` are kept. An attachment that fails policy, or that fails to store (including R2 not being configured at all), is dropped — logged, never raised — and the message is still stored with everything else intact. The stored MIME type comes from the allow-list, never from the sender.
 
 ### Admin Endpoints
 
 Admin endpoints require an admin-scoped token: `POST /admin/login` returns it, and it
-goest in `Authorization: Bearer <token>`. Mailbox tokens are rejected by the admin
+goes in `Authorization: Bearer <token>`. Unlike a mailbox session (an opaque,
+DB-backed token), the admin token is a short-lived JWT
+(`ADMIN_TOKEN_EXPIRE_MINUTES`). Mailbox tokens are rejected by the admin
 API and admin tokens are rejected by the mailbox API. The first login bootstraps the
 admin account from `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` when no admin exists yet.
 
@@ -339,6 +365,9 @@ Applied per client IP and per backend process, in a sliding one-minute window:
 - `POST /mailboxes` and `POST /mailboxes/batch` share one budget
   (`RATE_LIMIT_CREATE_PER_MINUTE`, default 10)
 - `POST /mailboxes/login` (`RATE_LIMIT_LOGIN_PER_MINUTE`, default 10)
+- `POST /webhooks/inbound-email` (`RATE_LIMIT_WEBHOOK_PER_MINUTE`, default
+  120) — enforced before the request body is read, so an unauthenticated
+  caller can't force repeated large-payload work for free
 
 Exceeding a limit returns `429` with a `Retry-After` header (seconds). Set
 `RATE_LIMIT_ENABLED=false` only for local development. Because the counters are
