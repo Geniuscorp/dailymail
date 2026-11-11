@@ -19,6 +19,10 @@ class Settings(BaseSettings):
 
     # Domain
     domain: str = "kupay.site"
+    # Comma-separated list of origins the frontend is actually served from.
+    # Keep this in sync with wherever `web` is really reachable: a frontend
+    # origin that is not listed here gets its requests rejected by CORS.
+    cors_allowed_origins: str = "https://temp.kupay.site,http://localhost:3000,http://localhost:5173"
 
     # Security
     # No safe default on purpose: an empty or placeholder value is rejected at
@@ -68,6 +72,10 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

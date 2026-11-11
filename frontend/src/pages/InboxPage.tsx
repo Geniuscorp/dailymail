@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listMessages } from '../services/api'
 import type { MessageSummary } from '../types'
+
+// Polls for new mail without the user having to click "Atualizar": a
+// background refresh that fails (e.g. a flaky connection) does not show the
+// full-page error or spinner, since the inbox already has content on screen.
+const POLL_INTERVAL_MS = 3000
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })
@@ -11,21 +16,33 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<MessageSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const hasMessages = useRef(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(async (background = false) => {
+    if (!background) {
+      setLoading(true)
+      setError(null)
+    }
     try {
-      setMessages(await listMessages())
+      const data = await listMessages()
+      setMessages(data)
+      hasMessages.current = true
+      setError(null)
     } catch {
-      setError('Não foi possível carregar as mensagens.')
+      if (!background || !hasMessages.current) {
+        setError('Não foi possível carregar as mensagens.')
+      }
     } finally {
-      setLoading(false)
+      if (!background) {
+        setLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => {
     void load()
+    const interval = setInterval(() => void load(true), POLL_INTERVAL_MS)
+    return () => clearInterval(interval)
   }, [load])
 
   return (

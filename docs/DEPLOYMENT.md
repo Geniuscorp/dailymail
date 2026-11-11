@@ -23,6 +23,10 @@ cp backend/.env.example backend/.env
 ```
 DATABASE_URL=sqlite:///./dailymail.db
 DOMAIN=kupay.site
+# Must match the real URL the frontend is served from right now, not the
+# final domain if it isn't live yet (e.g. a Cloudflare Pages preview URL,
+# a VPS IP, or http://localhost:5173 during local testing).
+CORS_ALLOWED_ORIGINS=https://temp.kupay.site,http://localhost:3000,http://localhost:5173
 
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD_HASH=<argon2id-hash>
