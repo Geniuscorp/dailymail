@@ -6,7 +6,7 @@ import type { MessageSummary } from '../types'
 // Polls for new mail without the user having to click "Atualizar": a
 // background refresh that fails (e.g. a flaky connection) does not show the
 // full-page error or spinner, since the inbox already has content on screen.
-const POLL_INTERVAL_MS = 3000
+const POLL_INTERVAL_MS = 1500
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })
