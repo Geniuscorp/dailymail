@@ -4,6 +4,15 @@ export interface TokenResponse {
   expires_in: number
 }
 
+export interface MailboxInfo {
+  id: number
+  email_address: string
+  status: string
+  created_at: string
+  expires_at: string | null
+  batch_id: number | null
+}
+
 export interface MessageSummary {
   id: number
   sender: string

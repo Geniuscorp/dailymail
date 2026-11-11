@@ -39,6 +39,18 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # FastAPI's own interactive API docs (Swagger UI / ReDoc), linked from the
+    # app's sidebar for anyone who wants to call the API directly. Proxied on
+    # the same origin so it stays reachable without exposing the backend's
+    # own address publicly.
+    location ~ ^/(docs|redoc|openapi\.json)$ {
+        proxy_pass http://${API_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Single-page app: unknown paths render the app router.
     location / {
         try_files $uri $uri/ /index.html;

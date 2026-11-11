@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { clearToken, getToken } from './session'
-import type { MessageDetail, MessageSummary, TokenResponse } from '../types'
+import type { MailboxInfo, MessageDetail, MessageSummary, TokenResponse } from '../types'
 
 // An empty value means "same origin": nginx proxies /api to the backend.
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
@@ -55,6 +55,11 @@ export async function updatePassword(currentPassword: string, newPassword: strin
 
 export async function deleteAccount(): Promise<void> {
   await client.delete('/mailboxes/me')
+}
+
+export async function getCurrentMailbox(): Promise<MailboxInfo> {
+  const { data } = await client.get<MailboxInfo>('/mailboxes/me')
+  return data
 }
 
 export async function listMessages(limit = 50): Promise<MessageSummary[]> {

@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import AccountSwitcherPanel from '../components/AccountSwitcherPanel'
+import InfoSidebar from '../components/InfoSidebar'
 import { logout as logoutRequest } from '../services/api'
 import { clearToken, getToken } from '../services/session'
 
@@ -30,8 +32,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
-      <header className="border-b border-gray-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 sticky top-0 z-10">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <Link to={loggedIn ? '/inbox' : '/'} className="flex items-center gap-2">
             <MailIcon />
             <span className="text-lg font-semibold tracking-tight text-gray-900">DailyMail</span>
@@ -57,7 +59,23 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">{children}</main>
+
+      <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+        {loggedIn ? (
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)_260px]">
+            <aside className="hidden lg:block">
+              <InfoSidebar />
+            </aside>
+            <main className="min-w-0">{children}</main>
+            <aside className="hidden lg:block">
+              <AccountSwitcherPanel />
+            </aside>
+          </div>
+        ) : (
+          <main className="mx-auto max-w-3xl">{children}</main>
+        )}
+      </div>
+
       <footer className="border-t border-gray-200 px-4 py-4 text-center text-xs text-gray-400">
         <Link to="/admin" className="hover:text-gray-600">
           Administração
