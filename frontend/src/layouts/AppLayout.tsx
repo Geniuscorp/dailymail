@@ -30,53 +30,70 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     navigate('/login', { replace: true })
   }
 
-  return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <Link to={loggedIn ? '/inbox' : '/'} className="flex items-center gap-2">
-            <MailIcon />
-            <span className="text-lg font-semibold tracking-tight text-gray-900">DailyMail</span>
-          </Link>
-          <div className="flex items-center gap-1">
-            {loggedIn && (
-              <>
-                <Link
-                  to="/account"
-                  className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                >
-                  Definições
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => void logout()}
-                  className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                >
-                  Sair
-                </button>
-              </>
-            )}
-          </div>
+  const header = (
+    <header className="z-10 shrink-0 border-b border-gray-200 bg-white">
+      <div className="flex items-center justify-between px-6 py-3">
+        <Link to={loggedIn ? '/inbox' : '/'} className="flex items-center gap-2">
+          <MailIcon />
+          <span className="text-lg font-semibold tracking-tight text-gray-900">DailyMail</span>
+        </Link>
+        <div className="flex items-center gap-1">
+          {loggedIn && (
+            <>
+              <Link
+                to="/account"
+                className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+              >
+                Definições
+              </Link>
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+              >
+                Sair
+              </button>
+            </>
+          )}
         </div>
-      </header>
-
-      <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
-        {loggedIn ? (
-          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)_260px]">
-            <aside className="hidden lg:block">
-              <InfoSidebar />
-            </aside>
-            <main className="min-w-0">{children}</main>
-            <aside className="hidden lg:block">
-              <AccountSwitcherPanel />
-            </aside>
-          </div>
-        ) : (
-          <main className="mx-auto max-w-3xl">{children}</main>
-        )}
       </div>
+    </header>
+  )
 
-      <footer className="border-t border-gray-200 px-4 py-4 text-center text-xs text-gray-400">
+  if (!loggedIn) {
+    return (
+      <div className="flex min-h-screen flex-col bg-gray-50">
+        {header}
+        <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-12">{children}</main>
+        <footer className="shrink-0 border-t border-gray-200 px-4 py-3 text-center text-xs text-gray-400">
+          <Link to="/admin" className="hover:text-gray-600">
+            Administração
+          </Link>
+        </footer>
+      </div>
+    )
+  }
+
+  // A full-height application shell, not a page that happens to have
+  // sidebars: each pane fills the viewport and scrolls on its own, so a
+  // short inbox doesn't leave the panels looking like stray cards adrift in
+  // empty space, and the page actually uses the width of the screen instead
+  // of floating a narrow column in the middle of it.
+  return (
+    <div className="flex h-screen flex-col bg-gray-50">
+      {header}
+      <div className="flex min-h-0 flex-1">
+        <aside className="hidden w-64 shrink-0 overflow-y-auto border-r border-gray-200 bg-white lg:block">
+          <InfoSidebar />
+        </aside>
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-6 py-8">{children}</div>
+        </main>
+        <aside className="hidden w-72 shrink-0 overflow-y-auto border-l border-gray-200 bg-white lg:block">
+          <AccountSwitcherPanel />
+        </aside>
+      </div>
+      <footer className="shrink-0 border-t border-gray-200 px-4 py-2 text-center text-xs text-gray-400">
         <Link to="/admin" className="hover:text-gray-600">
           Administração
         </Link>

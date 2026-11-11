@@ -171,7 +171,7 @@ export default function AccountSwitcherPanel() {
   }, [])
 
   return (
-    <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="space-y-3 p-5">
       <div>
         <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Conta atual</h2>
         <p className="mt-1.5 truncate text-sm font-medium text-gray-900" title={email ?? undefined}>

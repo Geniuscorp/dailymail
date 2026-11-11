@@ -2,10 +2,10 @@ import { API_BASE_URL } from '../services/api'
 
 export default function InfoSidebar() {
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="divide-y divide-gray-100">
+      <section className="p-5">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Sobre a conta</h2>
-        <ul className="mt-2.5 space-y-2 text-sm text-gray-600">
+        <ul className="mt-3 space-y-2.5 text-sm text-gray-600">
           <li className="flex gap-2">
             <span className="text-indigo-500">•</span>
             As mensagens ficam guardadas 30 dias.
@@ -19,11 +19,11 @@ export default function InfoSidebar() {
             Novas mensagens aparecem sozinhas, sem precisar de atualizar.
           </li>
         </ul>
-      </div>
+      </section>
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <section className="p-5">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Para programadores</h2>
-        <p className="mt-2 text-sm text-gray-600">
+        <p className="mt-3 text-sm text-gray-600">
           Cria contas, lê mensagens e descarrega anexos diretamente pela API REST.
         </p>
         <a
@@ -43,7 +43,7 @@ export default function InfoSidebar() {
             />
           </svg>
         </a>
-      </div>
+      </section>
     </div>
   )
 }
