@@ -86,9 +86,13 @@ def purge_expired_messages(
         logger.info("retention sweep removed %s expired message(s)", len(expired))
 
 
-def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+def run_sweep_once() -> int:
+    """Run one sweep with its own session and storage lookup.
 
+    Returns the number of messages purged; raises ``StorageError`` if
+    attachments were due for deletion but object storage is not available
+    (the caller decides whether that is fatal).
+    """
     storage: Optional[ObjectStorage] = None
     try:
         storage = get_object_storage()
@@ -97,12 +101,19 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        purged = purge_expired_messages(db, storage)
+        return purge_expired_messages(db, storage)
+    finally:
+        db.close()
+
+
+def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+    try:
+        purged = run_sweep_once()
     except StorageError as exc:
         logger.error("retention sweep aborted: %s", exc)
         return 1
-    finally:
-        db.close()
 
     logger.info("retention sweep finished: %s message(s) purged", purged)
     return 0

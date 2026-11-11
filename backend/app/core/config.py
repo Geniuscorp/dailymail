@@ -68,6 +68,14 @@ class Settings(BaseSettings):
 
     # Email retention
     email_retention_days: int = 30
+    # Runs the retention sweep as a background task inside this same process
+    # (see app/main.py) instead of requiring a separate cron job/container —
+    # set to false only if retention is already handled some other way
+    # (e.g. the `retention` service in docker-compose.yml, or an external
+    # scheduler) and running it twice is unwanted (it is harmless either way:
+    # a sweep is idempotent, it only ever deletes rows already past expiry).
+    retention_sweep_enabled: bool = True
+    retention_sweep_interval_hours: int = 24
 
     class Config:
         env_file = ".env"

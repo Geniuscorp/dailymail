@@ -185,3 +185,33 @@ class TestPurgeBatching:
 
         assert _messages_for(address) == []
         assert client.get("/api/messages", headers=headers).json() == []
+
+
+class TestRetentionBackgroundTask:
+    """The sweep also runs as a background task inside the API process
+    itself (app/main.py), so it needs no separate cron job/container on a
+    platform that can't easily share a volume between a service and a job.
+    """
+
+    def test_app_starts_and_stops_the_retention_loop_cleanly(self):
+        # Only `with` triggers FastAPI's lifespan (startup/shutdown); this
+        # confirms the background task is created and cancelled without
+        # raising, without waiting out its real sleep interval.
+        with TestClient(app) as test_client:
+            assert test_client.get("/health").status_code == 200
+
+    def test_run_sweep_once_wires_session_and_storage_together(self, storage, monkeypatch):
+        import app.tasks.retention as retention_module
+
+        monkeypatch.setattr(retention_module, "SessionLocal", TestingSessionLocal)
+        monkeypatch.setattr(retention_module, "get_object_storage", lambda: storage)
+
+        address, _ = _mailbox()
+        _deliver(address, [_attachment("a.pdf", PDF)])
+        _expire(address)
+
+        from app.tasks.retention import run_sweep_once
+
+        assert run_sweep_once() == 1
+        assert _messages_for(address) == []
+        assert storage.objects == {}

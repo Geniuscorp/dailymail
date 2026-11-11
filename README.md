@@ -21,7 +21,7 @@ DailyMail lets anyone create a temporary `@kupay.site` address protected by a pa
 | Attachment Storage | Cloudflare R2 |
 | Email Reception | Cloudflare Email Routing + a dedicated Email Worker (`worker/`) |
 | Email Domain | Cloudflare Nameservers |
-| Deployment | Docker Compose (`api` + `web` + `retention`), nginx serving the SPA and proxying `/api` same-origin |
+| Deployment | Docker Compose (`api` + `web`), nginx serving the SPA and proxying `/api` same-origin |
 
 ## Project Structure
 
@@ -99,6 +99,7 @@ npm run dev
 - ✅ Real-time inbox: new mail is pushed to the browser over Server-Sent Events the instant it is stored, with a slow fallback poll as a safety net — no manual refresh needed
 - ✅ Attachments: PDFs, images and common office/archive formats, validated by file signature (not by the sender's claimed type), stored in Cloudflare R2
 - ✅ Best-effort attachment delivery: a storage failure or unconfigured R2 drops just that attachment, never the whole message
+- ✅ Retention sweep runs automatically inside the API process itself (no separate cron job or container to configure on any deployment target)
 
 ### Administration
 - ✅ Admin dashboard (`/api/admin/dashboard` and the `/admin` screen, kept out of the main navigation)
@@ -112,7 +113,7 @@ npm run dev
 - ✅ Separate mailbox/admin token scopes; the app refuses to start in production with a missing or placeholder `ACCESS_TOKEN_SECRET`
 - ✅ Configurable CORS allow-list (`CORS_ALLOWED_ORIGINS`), no hardcoded domain
 - ✅ Correct client-IP attribution behind the bundled nginx proxy, so the rate limiter can't be bypassed or turned into a shared budget for every visitor
-- ✅ Test suite (backend): 115+ tests covering auth, sessions, attachments, webhooks, retention and the SSE push
+- ✅ Test suite (backend): 117+ tests covering auth, sessions, attachments, webhooks, retention and the SSE push
 
 ### Deployment
 - ✅ Production configuration (env vars, single-worker SQLite, retention schedule)

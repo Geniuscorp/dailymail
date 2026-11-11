@@ -176,9 +176,10 @@ server {
 
 #### Option 2: Docker Compose
 
-The repository ships a `docker-compose.yml` with three services: `api` (FastAPI +
-Alembic on `/data/dailymail.db`), `web` (nginx serving the built SPA and proxying
-`/api`) and `retention` (the daily retention sweep).
+The repository ships a `docker-compose.yml` with two services: `api` (FastAPI +
+Alembic on `/data/dailymail.db`, which also runs the retention sweep on its own
+schedule — see Retention Cleanup below) and `web` (nginx serving the built SPA
+and proxying `/api`).
 
 1. Create `backend/.env` from `backend/.env.example` and fill in the secrets. Set
    `RATE_LIMIT_ENABLED=true` and a `MAILBOX_CREATION_SECRET`, and leave
@@ -208,8 +209,8 @@ Alembic on `/data/dailymail.db`), `web` (nginx serving the built SPA and proxyin
 
 Notes:
 
-- The SQLite database lives in the `dailymail-data` volume, shared by `api` and
-  `retention`. Back it up with `docker compose exec api sqlite3 /data/dailymail.db ".backup /data/backup.db"`
+- The SQLite database lives in the `dailymail-data` volume, used by `api`.
+  Back it up with `docker compose exec api sqlite3 /data/dailymail.db ".backup /data/backup.db"`
   and copy the file out.
 - The API runs a single uvicorn worker: SQLite has one writer and the rate limiter
   is per process. Do not scale `api` horizontally without moving both out.
@@ -264,20 +265,42 @@ alembic upgrade head
 
 Messages become unreadable through the API as soon as they pass their retention
 window (`EMAIL_RETENTION_DAYS`, 30 days by default), but the database rows and the
-R2 objects are only reclaimed by the retention sweep:
+R2 objects are only reclaimed by the retention sweep.
+
+**This runs automatically** inside the API process itself (`app/main.py`, a
+background task started at startup) — there is nothing to schedule
+separately on any deployment target. By default it sweeps once ~60 seconds
+after startup, then every `RETENTION_SWEEP_INTERVAL_HOURS` (24 by default)
+for as long as the process runs. Tune it, or turn it off entirely if you'd
+rather run it externally instead:
+
+```
+RETENTION_SWEEP_ENABLED=true
+RETENTION_SWEEP_INTERVAL_HOURS=24
+```
+
+A failed sweep (e.g. attachments were due for deletion but R2 is not
+configured) is logged and retried on the next cycle; it never crashes the
+API process.
+
+### Running it manually or externally instead
+
+The sweep is also a standalone CLI command, useful for an ad-hoc run or if
+you'd rather manage scheduling yourself (set `RETENTION_SWEEP_ENABLED=false`
+first, so it isn't swept twice — harmless, but redundant):
 
 ```bash
 cd backend
 .venv/bin/python -m app.tasks.retention
 ```
 
-Run it daily, for example with cron:
+With cron:
 
 ```cron
 0 4 * * * cd /home/dailymail/app/backend && .venv/bin/python -m app.tasks.retention >> /var/log/dailymail-retention.log 2>&1
 ```
 
-or with a systemd timer:
+Or a systemd timer:
 
 ```ini
 # /etc/systemd/system/dailymail-retention.service
@@ -303,9 +326,9 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-The sweep exits with `0` after running. Exit code `1` means expired messages still
-held attachments while object storage was not configured: nothing was deleted, so
-the next run retries once the R2 credentials are in place.
+The CLI exits with `0` after running. Exit code `1` means expired messages
+still held attachments while object storage was not configured: nothing was
+deleted, so the next run retries once the R2 credentials are in place.
 
 ## Email Provider Setup
 

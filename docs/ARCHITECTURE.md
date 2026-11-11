@@ -188,6 +188,13 @@ nginx's own `proxy_buffering off` reach).
   whole app
 - Rate limiting counters live in process memory (`app/core/rate_limit.py`)
 - The SSE push fan-out (`app/core/events.py`) is also in-process pub/sub
+- The retention sweep runs as a background `asyncio` task started in
+  `app/main.py`'s lifespan, not a separate cron job/container — this is a
+  deliberate simplification, not a limitation: it needs no shared state
+  with any other process, and keeps working unchanged if the app is ever
+  split across more than one of them (each instance just sweeps on its own
+  schedule; the operation is idempotent, so running it from more than one
+  process is harmless, just redundant)
 
 These three are the reason the API intentionally runs as **one** uvicorn
 worker (see `backend/Dockerfile`). Mailbox sessions, by contrast, are
