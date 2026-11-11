@@ -102,6 +102,34 @@ class TestWebhookDelivery:
         assert len(client.get("/api/messages", headers=_auth(token_first)).json()) == 1
         assert len(client.get("/api/messages", headers=_auth(token_second)).json()) == 1
 
+    def test_same_message_id_same_mailbox_different_otp_both_delivered(self):
+        """The requirement: every login OTP must arrive. VFS reuses the
+        Message-ID across OTP emails, so two logins to the same mailbox bring
+        two messages with the same Message-ID but different codes. Both must be
+        stored — de-duplication keys on content, not the Message-ID."""
+        address = f"otp-{uuid.uuid4().hex[:8]}@kupay.site"
+        token = _create_mailbox(address)
+        reused_id = "<otp-template@vfsglobal.com>"
+
+        first = _payload(address, message_id=reused_id, subject="OTP", text="code 111111")
+        second = _payload(address, message_id=reused_id, subject="OTP", text="code 222222")
+        assert _deliver(first).json() == {"status": "stored"}
+        assert _deliver(second).json() == {"status": "stored"}
+
+        bodies = [m["id"] for m in client.get("/api/messages", headers=_auth(token)).json()]
+        assert len(bodies) == 2
+
+    def test_identical_redelivery_is_still_deduplicated(self):
+        """A Cloudflare re-delivery of the very same email is byte-identical and
+        must not create a second copy, even though the Message-ID is reused."""
+        address = f"redeliver-{uuid.uuid4().hex[:8]}@kupay.site"
+        token = _create_mailbox(address)
+        payload = _payload(address, message_id="<otp-template@vfsglobal.com>", text="code 333333")
+
+        assert _deliver(payload).json() == {"status": "stored"}
+        assert _deliver(payload).json() == {"status": "duplicate"}
+        assert len(client.get("/api/messages", headers=_auth(token)).json()) == 1
+
     def test_unknown_recipient_is_ignored(self):
         response = _deliver(_payload(f"nobody-{uuid.uuid4().hex[:8]}@kupay.site"))
         assert response.status_code == 202
