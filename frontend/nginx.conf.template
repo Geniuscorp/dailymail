@@ -9,6 +9,22 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
+    # The inbox's push connection (Server-Sent Events): matched before the
+    # general /api/ block below so nginx never buffers it — buffering would
+    # hold every event until the connection closes, defeating the whole
+    # point of pushing new mail out the moment it arrives. The backend also
+    # sends X-Accel-Buffering: no on this response for the same reason.
+    location = /api/messages/stream {
+        proxy_pass http://${API_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+    }
+
     # API requests are proxied to the backend so the browser stays on one origin
     # (no CORS, cookies and relative /api paths keep working).
     #

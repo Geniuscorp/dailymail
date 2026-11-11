@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listMessages } from '../services/api'
+import { subscribeToMessageStream } from '../services/messageStream'
 import type { MessageSummary } from '../types'
 
-// Polls for new mail without the user having to click "Atualizar": a
-// background refresh that fails (e.g. a flaky connection) does not show the
-// full-page error or spinner, since the inbox already has content on screen.
-const POLL_INTERVAL_MS = 1500
+// New mail is pushed over SSE (see messageStream.ts) instead of being
+// polled for, so the inbox updates itself the moment a message is stored —
+// not on the next tick of a timer. This interval is only a safety net in
+// case the stream's connection is stuck (e.g. a proxy buffering it) without
+// having visibly dropped; it is deliberately far looser than a poll meant to
+// carry the normal case.
+const FALLBACK_POLL_INTERVAL_MS = 30000
 const PAGE_SIZE = 50
 // Matches the backend's hard cap (`Query(..., le=100)` on GET /messages).
 const MAX_LIMIT = 100
@@ -51,8 +55,12 @@ export default function InboxPage() {
 
   useEffect(() => {
     void load()
-    const interval = setInterval(() => void load(true), POLL_INTERVAL_MS)
-    return () => clearInterval(interval)
+    const unsubscribe = subscribeToMessageStream(() => void load(true))
+    const fallback = setInterval(() => void load(true), FALLBACK_POLL_INTERVAL_MS)
+    return () => {
+      unsubscribe()
+      clearInterval(fallback)
+    }
   }, [load])
 
   return (

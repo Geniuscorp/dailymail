@@ -60,6 +60,7 @@ DailyMail is a temporary email service with a layered architecture:
 /api/
   /mailboxes           # User email operations
   /messages            # User message access
+    /stream            # SSE push: a nudge when new mail lands (see below)
   /attachments         # User attachment access
   /webhooks            # External provider webhooks
   /admin/              # Admin operations
@@ -69,6 +70,27 @@ DailyMail is a temporary email service with a layered architecture:
     /messages
     /attachments
 ```
+
+## Real-time Inbox Updates
+
+`GET /api/messages/stream` is a Server-Sent Events connection: the frontend
+opens it once per inbox visit and gets pushed a nudge as soon as
+`MessageService.ingest()` stores a new message for that mailbox, instead of
+polling `GET /messages` on a timer. The fan-out is an in-process
+`MailboxEventBroker` (`app/core/events.py`) — fine for the single uvicorn
+worker this API runs as, but it would need moving to Redis pub/sub (or
+similar) before running more than one process, since a push would otherwise
+only reach whichever process happens to hold the subscriber.
+
+The route deliberately does not use the request-scoped `get_db` dependency:
+SQLite only has one connection in the whole app (`StaticPool`), and this
+response can stay open for as long as a browser tab is, so holding that
+session for the connection's lifetime would freeze every other request. It
+resolves the mailbox with its own short-lived session instead, closed before
+the (potentially hours-long) event loop starts. A 30s poll stays as a backup
+on the frontend in case a stream silently gets stuck (e.g. a buffering proxy
+between the browser and nginx that neither `X-Accel-Buffering: no` nor
+nginx's own `proxy_buffering off` reach).
 
 ## Authentication
 

@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.events import broker
 from app.models.attachment import Attachment
 from app.models.mailbox import Mailbox, MailboxStatus
 from app.models.message import Message
@@ -101,6 +102,7 @@ class MessageService:
             self.db.rollback()
             self._remove_objects(stored_keys)
             raise
+        broker.publish(mailbox.id, "new_message")
         return IngestResult.STORED
 
     def _store_attachments(self, message: Message, inbound: InboundMessage) -> list[str]:
