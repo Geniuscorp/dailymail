@@ -2,6 +2,10 @@ name = "dailymail-email-worker"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 
+# This Worker is only an Email Routing destination (no HTTP route), so it does
+# not need a workers.dev subdomain or a route to be deployed.
+workers_dev = false
+
 # Set the public HTTPS origin of the FastAPI backend here (not a secret).
 [vars]
 BACKEND_URL = "https://api.kupay.site"
