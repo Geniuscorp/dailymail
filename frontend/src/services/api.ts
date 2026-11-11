@@ -4,6 +4,7 @@ import type { MessageDetail, MessageSummary, TokenResponse } from '../types'
 
 // An empty value means "same origin": nginx proxies /api to the backend.
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+export const MAIL_DOMAIN = import.meta.env.VITE_MAIL_DOMAIN ?? 'kupay.site'
 
 const client = axios.create({
   baseURL: `${API_BASE_URL}/api`,
@@ -39,6 +40,21 @@ export async function logout(): Promise<void> {
   } catch {
     // Ignored: the caller clears the local token either way.
   }
+}
+
+export async function createMailbox(emailAddress: string, password: string): Promise<void> {
+  await client.post('/mailboxes', { email_address: emailAddress, password })
+}
+
+export async function updatePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await client.patch('/mailboxes/me/password', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  })
+}
+
+export async function deleteAccount(): Promise<void> {
+  await client.delete('/mailboxes/me')
 }
 
 export async function listMessages(limit = 50): Promise<MessageSummary[]> {

@@ -21,6 +21,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             DailyMail
           </Link>
           <div className="flex items-center gap-1">
+            {loggedIn && (
+              <Link
+                to="/account"
+                className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+              >
+                Definições
+              </Link>
+            )}
             <Link
               to="/admin"
               className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
