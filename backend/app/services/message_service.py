@@ -68,9 +68,19 @@ class MessageService:
             .first()
         )
         if mailbox is None:
+            logger.info(
+                "inbound dropped: no active mailbox for %r (message-id %r)",
+                inbound.recipient,
+                inbound.provider_message_id,
+            )
             return IngestResult.IGNORED
 
-        if self._already_stored(inbound.provider_message_id):
+        if self._already_stored(mailbox.id, inbound.provider_message_id):
+            logger.info(
+                "inbound dropped as duplicate for %r (message-id %r)",
+                inbound.recipient,
+                inbound.provider_message_id,
+            )
             return IngestResult.DUPLICATE
 
         received_at = inbound.received_at or datetime.now(timezone.utc)
@@ -156,10 +166,15 @@ class MessageService:
             except StorageError:
                 logger.warning("orphaned attachment object could not be removed")
 
-    def _already_stored(self, provider_message_id: str) -> bool:
+    def _already_stored(self, mailbox_id: int, provider_message_id: str) -> bool:
+        """Only a repeat delivery to the SAME mailbox is a duplicate: a
+        Message-ID is unique per sender, not across the whole service."""
         return (
             self.db.query(Message.id)
-            .filter(Message.provider_message_id == provider_message_id)
+            .filter(
+                Message.mailbox_id == mailbox_id,
+                Message.provider_message_id == provider_message_id,
+            )
             .first()
             is not None
         )

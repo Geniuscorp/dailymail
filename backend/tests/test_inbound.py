@@ -86,6 +86,22 @@ class TestWebhookDelivery:
 
         assert len(client.get("/api/messages", headers=_auth(token)).json()) == 1
 
+    def test_same_message_id_to_another_mailbox_is_still_delivered(self):
+        """A Message-ID is unique per sender, not across the service. A sender
+        that reuses one (or one message fanned out to several recipients) must
+        not stop every other mailbox from receiving its mail."""
+        first = f"fan1-{uuid.uuid4().hex[:8]}@kupay.site"
+        second = f"fan2-{uuid.uuid4().hex[:8]}@kupay.site"
+        token_first = _create_mailbox(first)
+        token_second = _create_mailbox(second)
+        shared_id = f"<{uuid.uuid4()}@sender.example>"
+
+        assert _deliver(_payload(first, message_id=shared_id)).json() == {"status": "stored"}
+        assert _deliver(_payload(second, message_id=shared_id)).json() == {"status": "stored"}
+
+        assert len(client.get("/api/messages", headers=_auth(token_first)).json()) == 1
+        assert len(client.get("/api/messages", headers=_auth(token_second)).json()) == 1
+
     def test_unknown_recipient_is_ignored(self):
         response = _deliver(_payload(f"nobody-{uuid.uuid4().hex[:8]}@kupay.site"))
         assert response.status_code == 202

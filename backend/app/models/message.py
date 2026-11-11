@@ -1,5 +1,5 @@
 """Message model."""
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Boolean, Text
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Boolean, Text, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -9,9 +9,24 @@ from app.models.base import Base
 class Message(Base):
     __tablename__ = "messages"
 
+    # A Message-ID is only unique per sender, and the same one legitimately
+    # appears when a message is delivered to several recipients. A global
+    # unique index let one sender that reuses its Message-ID (common in
+    # templated transactional mail) block that mail for every mailbox in the
+    # service: the first delivery was stored and every later one was discarded
+    # as a duplicate. De-duplication belongs per mailbox.
+    __table_args__ = (
+        Index(
+            "ix_messages_provider_message_id",
+            "mailbox_id",
+            "provider_message_id",
+            unique=True,
+        ),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     mailbox_id = Column(Integer, ForeignKey("mailboxes.id"), nullable=False, index=True)
-    provider_message_id = Column(String, unique=True, index=True, nullable=True)
+    provider_message_id = Column(String, nullable=True)
     sender = Column(String, nullable=False)
     recipient = Column(String, nullable=False)
     subject = Column(String, nullable=True)
