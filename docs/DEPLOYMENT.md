@@ -157,7 +157,12 @@ server {
     
     ssl_certificate /etc/letsencrypt/live/kupay.site/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/kupay.site/privkey.pem;
-    
+
+    # nginx's own default (1MB) is well under MAX_INBOUND_PAYLOAD_MB (40MB):
+    # without this, nginx rejects any inbound-email delivery carrying an
+    # attachment with its own 413 before the app ever sees the request.
+    client_max_body_size 45M;
+
     location / {
         proxy_pass http://localhost:8000;
         proxy_set_header Host $host;

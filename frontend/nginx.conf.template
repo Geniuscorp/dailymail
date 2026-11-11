@@ -5,6 +5,13 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # nginx's own default (1MB) is well under the backend's inbound-email
+    # limit (MAX_INBOUND_PAYLOAD_MB, 40MB by default): without raising it
+    # here, nginx itself rejects any webhook delivery carrying an attachment
+    # with its own 413, before the request ever reaches the app — the
+    # app-level size check and its logging never even get a chance to run.
+    client_max_body_size 45M;
+
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
