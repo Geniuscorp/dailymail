@@ -213,6 +213,9 @@ Notes:
 - Alembic runs on every `api` start, so schema upgrades ship with the image.
 - To change the public URL of the API instead of using the same-origin proxy, pass
   `VITE_API_BASE_URL` as a build argument (it is compiled into the bundle).
+- `VITE_MAIL_DOMAIN` (also a build argument, default `kupay.site`) is shown as the
+  fixed `@domain` suffix on the "create account" form; keep it in sync with the
+  backend's `DOMAIN` setting.
 
 ### Frontend Deployment
 
