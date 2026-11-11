@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { logout as logoutRequest } from '../services/api'
 import { clearToken, getToken } from '../services/session'
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const loggedIn = getToken() !== null
 
-  function logout() {
+  async function logout() {
+    await logoutRequest()
     clearToken()
     navigate('/login', { replace: true })
   }
@@ -19,6 +21,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             DailyMail
           </Link>
           <div className="flex items-center gap-1">
+            {loggedIn && (
+              <Link
+                to="/account"
+                className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+              >
+                Definições
+              </Link>
+            )}
             <Link
               to="/admin"
               className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
@@ -28,7 +38,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             {loggedIn && (
               <button
                 type="button"
-                onClick={logout}
+                onClick={() => void logout()}
                 className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
               >
                 Sair

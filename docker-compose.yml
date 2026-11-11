@@ -36,6 +36,7 @@ services:
       # Empty base URL: the browser calls /api on the same origin, proxied to api.
       args:
         VITE_API_BASE_URL: ""
+        VITE_MAIL_DOMAIN: "kupay.site"
     ports:
       - "8080:80"
     depends_on:

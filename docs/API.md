@@ -32,7 +32,7 @@ POST `/mailboxes/login` with email and password returns:
 {
   "access_token": "...",
   "token_type": "bearer",
-  "expires_in": 86400
+  "expires_in": 7776000
 }
 ```
 
@@ -40,6 +40,11 @@ Include token in Authorization header:
 ```
 Authorization: Bearer <token>
 ```
+
+The password is only needed again if the session is revoked (logout, password
+change on another device) or outlives `MAILBOX_SESSION_EXPIRE_DAYS` (90 days by
+default) without being used — the token itself is opaque and stored (hashed)
+server-side, not a JWT, so it survives browser restarts and can be revoked.
 
 ### Admin Authentication
 
@@ -102,6 +107,13 @@ Request:
 }
 ```
 
+#### Logout
+```
+POST /mailboxes/logout
+```
+
+Requires authentication. Revokes only the current session; other devices stay signed in.
+
 #### Get Mailbox Info
 ```
 GET /mailboxes/me
@@ -122,6 +134,8 @@ Request:
 }
 ```
 
+Revokes every other session for this mailbox; the device making the request stays signed in.
+
 #### Delete Mailbox
 ```
 DELETE /mailboxes/me
@@ -139,7 +153,6 @@ GET /messages
 Query parameters:
 - `limit`: number of messages (default: 20)
 - `offset`: pagination offset (default: 0)
-- `is_read`: filter by read status
 
 #### Get Message
 ```

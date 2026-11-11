@@ -6,7 +6,12 @@ enough to stop password guessing and bulk mailbox creation from one client. Move
 the counters to a shared store if the API ever runs on several hosts.
 
 Client identification uses ``request.client``, which uvicorn rewrites from
-``X-Forwarded-For`` when it runs behind the nginx proxy in the deployment guide.
+``X-Forwarded-For`` only when told to trust the proxy in front of it
+(``--proxy-headers --forwarded-allow-ips``, set in ``backend/Dockerfile`` for
+the Compose deployment and already the default for the systemd + local-nginx
+option in the deployment guide, since there the proxy is 127.0.0.1). Without
+that trust every request looks like it comes from the proxy's own address and
+this becomes one shared budget for every real visitor.
 """
 import math
 import threading

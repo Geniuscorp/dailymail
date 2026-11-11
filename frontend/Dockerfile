@@ -8,7 +8,9 @@ RUN npm ci
 COPY . .
 # Empty value means the browser calls /api on the same origin (proxied by nginx).
 ARG VITE_API_BASE_URL=""
+ARG VITE_MAIL_DOMAIN="kupay.site"
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_MAIL_DOMAIN=$VITE_MAIL_DOMAIN
 RUN npm run build
 
 FROM nginx:1.27-alpine

@@ -7,8 +7,15 @@ compatibility_date = "2025-01-01"
 workers_dev = false
 
 # Set the public HTTPS origin of the FastAPI backend here (not a secret).
-[vars]
-BACKEND_URL = "https://api.kupay.site"
+#
+# Current deployment (Northflank, single "combined service" running the repo's
+# docker-compose stack): there is no separate api.kupay.site domain yet. The
+# `web` container (nginx) is the only public entrypoint and proxies /api/ to
+# `api` internally, exactly like the local docker-compose setup, so this must
+# be the same origin the browser uses for the site, not a dedicated API host.
+# Swap this for the real domain (e.g. https://mail.kupay.site) once Email
+# Routing's DNS is configured and the final domain is live.
+BACKEND_URL = "https://p01--dailymail--hc2hdc998rkf.code.run"
 
 # INBOUND_WEBHOOK_SECRET must be stored as a secret, never committed:
 #   npx wrangler secret put INBOUND_WEBHOOK_SECRET

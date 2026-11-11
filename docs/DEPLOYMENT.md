@@ -23,10 +23,13 @@ cp backend/.env.example backend/.env
 ```
 DATABASE_URL=sqlite:///./dailymail.db
 DOMAIN=kupay.site
+# Must match the real URL the frontend is served from right now, not the
+# final domain if it isn't live yet (e.g. a Cloudflare Pages preview URL,
+# a VPS IP, or http://localhost:5173 during local testing).
+CORS_ALLOWED_ORIGINS=https://temp.kupay.site,http://localhost:3000,http://localhost:5173
 
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD_HASH=<argon2id-hash>
-ADMIN_API_SECRET=<random-secret>
 
 R2_ACCOUNT_ID=<your-account-id>
 R2_ACCESS_KEY_ID=<your-key>
@@ -36,11 +39,15 @@ R2_BUCKET_NAME=dailymail-attachments
 INBOUND_EMAIL_PROVIDER=<provider>
 INBOUND_WEBHOOK_SECRET=<webhook-secret>
 
+# Required in production; the app refuses to start without a real value here
+# (at least 32 chars, not the placeholder from .env.example).
 ACCESS_TOKEN_SECRET=<random-secret>
+MAILBOX_SESSION_EXPIRE_DAYS=90
 
 RATE_LIMIT_ENABLED=true
 RATE_LIMIT_CREATE_PER_MINUTE=10
 RATE_LIMIT_LOGIN_PER_MINUTE=10
+RATE_LIMIT_WEBHOOK_PER_MINUTE=120
 MAILBOX_CREATION_SECRET=<random-secret>
 ```
 
@@ -48,6 +55,18 @@ MAILBOX_CREATION_SECRET=<random-secret>
 domain: when it is set, `POST /api/mailboxes` and `POST /api/mailboxes/batch`
 require the `X-DailyMail-Creation-Secret` header. Mailbox accounts never expire;
 only message content has a 30-day window.
+
+### Mailbox sessions
+
+A password is only needed twice: at `POST /api/mailboxes` (creation) and at
+`POST /api/mailboxes/login`. Login returns an opaque, long-lived session token
+(`MAILBOX_SESSION_EXPIRE_DAYS`, 90 days by default) that is stored hashed in
+the `mailbox_sessions` table — not a JWT, so it can be looked up and revoked.
+The frontend keeps the raw token in `localStorage`, so the inbox stays open
+across browser restarts like mail.tm, until the user logs out
+(`POST /api/mailboxes/logout`, revokes only that session), changes the
+password (revokes every *other* session), or deletes the mailbox (revokes
+all of them).
 
 ### Frontend
 
@@ -185,9 +204,18 @@ Notes:
   and copy the file out.
 - The API runs a single uvicorn worker: SQLite has one writer and the rate limiter
   is per process. Do not scale `api` horizontally without moving both out.
+- The `api` container trusts `X-Forwarded-For` from any address
+  (`--forwarded-allow-ips='*'` in `backend/Dockerfile`). That is safe only
+  because `api` publishes no port of its own and is reachable exclusively from
+  the `web` (nginx) container on the Compose network — if you ever expose
+  `api`'s port directly, remove that flag first or the rate limiter can be
+  trivially bypassed by spoofing the header.
 - Alembic runs on every `api` start, so schema upgrades ship with the image.
 - To change the public URL of the API instead of using the same-origin proxy, pass
   `VITE_API_BASE_URL` as a build argument (it is compiled into the bundle).
+- `VITE_MAIL_DOMAIN` (also a build argument, default `kupay.site`) is shown as the
+  fixed `@domain` suffix on the "create account" form; keep it in sync with the
+  backend's `DOMAIN` setting.
 
 ### Frontend Deployment
 
@@ -316,7 +344,7 @@ sqlite3 dailymail.db ".backup backup.db"
 
 ## Security Checklist
 
-- [ ] Generate new ADMIN_PASSWORD_HASH and ADMIN_API_SECRET
+- [ ] Generate new ADMIN_PASSWORD_HASH
 - [ ] Configure HTTPS/SSL certificates
 - [ ] Set strong ACCESS_TOKEN_SECRET
 - [ ] Configure CORS for known domains only

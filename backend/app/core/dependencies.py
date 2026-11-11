@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.security import decode_access_token, decode_admin_token
+from app.core.security import decode_admin_token
 from app.models.admin_user import AdminUser, AdminUserStatus
-from app.models.mailbox import Mailbox
+from app.models.mailbox import Mailbox, MailboxStatus
+from app.models.mailbox_session import MailboxSession
 from app.services.mailbox_service import MailboxService
 
 security = HTTPBearer()
@@ -32,30 +33,33 @@ def require_creation_secret(request: Request) -> None:
         )
 
 
-def get_current_mailbox(
+def get_current_mailbox_session(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
-) -> Mailbox:
-    """Get current authenticated mailbox."""
-    token = credentials.credentials
-    email = decode_access_token(token)
+) -> MailboxSession:
+    """Resolve the bearer token to a live, persistent mailbox session.
 
-    if not email:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
+    The token is opaque and looked up in the database (not decoded like a
+    JWT), which is what lets a session be revoked on logout or password
+    change instead of only expiring on its own schedule.
+    """
     service = MailboxService(db)
-    mailbox = service.get_mailbox(email)
+    session = service.get_session(credentials.credentials)
 
-    if not mailbox:
+    if session is None or session.mailbox.status != MailboxStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Mailbox not found",
+            detail="Invalid or expired session",
         )
 
-    return mailbox
+    return session
+
+
+def get_current_mailbox(
+    session: MailboxSession = Depends(get_current_mailbox_session),
+) -> Mailbox:
+    """Get the mailbox behind the current session."""
+    return session.mailbox
 
 
 def get_current_admin(

@@ -82,6 +82,22 @@ class TestRateLimiting:
             assert _create(_address()).status_code == 201
 
 
+class TestWebhookRateLimiting:
+    def test_inbound_webhook_is_rate_limited(self, monkeypatch):
+        settings = get_settings()
+        monkeypatch.setattr(settings, "rate_limit_enabled", True)
+        monkeypatch.setattr(settings, "rate_limit_webhook_per_minute", 1)
+
+        # No valid signature is needed: the limit is enforced before the
+        # payload is even read, so an unauthenticated caller cannot use it to
+        # force free repeated work.
+        first = client.post("/api/webhooks/inbound-email", content=b"{}")
+        assert first.status_code in (401, 503)
+
+        blocked = client.post("/api/webhooks/inbound-email", content=b"{}")
+        assert blocked.status_code == 429
+
+
 class TestCreationSecret:
     def test_creation_requires_the_secret_when_configured(self, monkeypatch):
         monkeypatch.setattr(get_settings(), "mailbox_creation_secret", "s3cret-value")

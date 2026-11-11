@@ -30,3 +30,4 @@ class Mailbox(Base):
     # Relationships
     batch = relationship("Batch", back_populates="mailboxes")
     messages = relationship("Message", back_populates="mailbox", cascade="all, delete-orphan")
+    sessions = relationship("MailboxSession", back_populates="mailbox", cascade="all, delete-orphan")
