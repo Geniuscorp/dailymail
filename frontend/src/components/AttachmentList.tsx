@@ -89,13 +89,13 @@ export default function AttachmentList({ attachments }: { attachments: Attachmen
           {error}
         </p>
       )}
-      <ul className="divide-y divide-gray-200 rounded-md border border-gray-200 bg-white">
+      <ul className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         {attachments.map((attachment) => (
-          <li key={attachment.id} className="space-y-2 p-3">
+          <li key={attachment.id} className="space-y-2 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-sm text-gray-900">{attachment.original_filename}</p>
-                <p className="text-xs text-gray-500">{formatSize(attachment.file_size)}</p>
+                <p className="truncate text-sm font-medium text-gray-900">{attachment.original_filename}</p>
+                <p className="text-xs text-gray-400">{formatSize(attachment.file_size)}</p>
               </div>
               <div className="flex gap-2">
                 {attachment.mime_type === PDF_TYPE && (
@@ -103,7 +103,7 @@ export default function AttachmentList({ attachments }: { attachments: Attachmen
                     type="button"
                     disabled={busyId !== null}
                     onClick={() => void openPdf(attachment)}
-                    className="rounded-md border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="rounded-lg border border-gray-200 px-3 py-1 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
                   >
                     Abrir
                   </button>
@@ -112,7 +112,7 @@ export default function AttachmentList({ attachments }: { attachments: Attachmen
                   type="button"
                   disabled={busyId !== null}
                   onClick={() => void download(attachment)}
-                  className="rounded-md border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+                  className="rounded-lg border border-gray-200 px-3 py-1 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
                 >
                   Descarregar
                 </button>

@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AppLayout from './layouts/AppLayout'
+import RedirectIfAuthenticated from './components/RedirectIfAuthenticated'
 import RequireAuth from './components/RequireAuth'
 import AccountPage from './pages/AccountPage'
 import AdminPage from './pages/AdminPage'
@@ -14,9 +15,30 @@ function App() {
     <BrowserRouter>
       <AppLayout>
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/create" element={<CreateMailboxPage />} />
-          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/"
+            element={
+              <RedirectIfAuthenticated>
+                <HomePage />
+              </RedirectIfAuthenticated>
+            }
+          />
+          <Route
+            path="/create"
+            element={
+              <RedirectIfAuthenticated>
+                <CreateMailboxPage />
+              </RedirectIfAuthenticated>
+            }
+          />
+          <Route
+            path="/login"
+            element={
+              <RedirectIfAuthenticated>
+                <LoginPage />
+              </RedirectIfAuthenticated>
+            }
+          />
           <Route path="/admin" element={<AdminPage />} />
           <Route
             path="/inbox"

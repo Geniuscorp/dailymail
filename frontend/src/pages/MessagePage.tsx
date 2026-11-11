@@ -79,35 +79,39 @@ export default function MessagePage() {
   if (error) {
     return (
       <section className="space-y-4">
-        <p role="alert" className="text-sm text-red-600">{error}</p>
-        <Link to="/inbox" className="text-sm text-gray-700 underline">Voltar à caixa de entrada</Link>
+        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
+        <Link to="/inbox" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
+          ← Voltar à caixa de entrada
+        </Link>
       </section>
     )
   }
 
   if (!message) {
-    return <p className="text-gray-500">A carregar…</p>
+    return <p className="py-8 text-center text-sm text-gray-400">A carregar…</p>
   }
 
   return (
     <article className="space-y-4">
-      <Link to="/inbox" className="text-sm text-gray-700 underline">Voltar à caixa de entrada</Link>
+      <Link to="/inbox" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
+        ← Voltar à caixa de entrada
+      </Link>
 
-      <header className="space-y-1 rounded-md border border-gray-200 bg-white p-4">
-        <h1 className="text-lg font-semibold">{message.subject || '(sem assunto)'}</h1>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-gray-600">
-          <dt>De</dt>
-          <dd className="break-all">{message.sender}</dd>
-          <dt>Para</dt>
-          <dd className="break-all">{message.recipient}</dd>
-          <dt>Recebida</dt>
-          <dd>{formatDate(message.received_at)}</dd>
-          <dt>Expira</dt>
-          <dd>{formatDate(message.expires_at)}</dd>
+      <header className="space-y-2 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h1 className="text-lg font-semibold text-gray-900">{message.subject || '(sem assunto)'}</h1>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+          <dt className="text-gray-400">De</dt>
+          <dd className="break-all text-gray-700">{message.sender}</dd>
+          <dt className="text-gray-400">Para</dt>
+          <dd className="break-all text-gray-700">{message.recipient}</dd>
+          <dt className="text-gray-400">Recebida</dt>
+          <dd className="text-gray-700">{formatDate(message.received_at)}</dd>
+          <dt className="text-gray-400">Expira</dt>
+          <dd className="text-gray-700">{formatDate(message.expires_at)}</dd>
         </dl>
       </header>
 
-      <div className="overflow-hidden rounded-md border border-gray-200 bg-white">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         {message.html_body_sanitized ? (
           <iframe
             title="Conteúdo da mensagem"
@@ -116,7 +120,7 @@ export default function MessagePage() {
             className="h-[60vh] w-full"
           />
         ) : (
-          <pre className="whitespace-pre-wrap break-words p-4 font-sans text-sm text-gray-800">
+          <pre className="whitespace-pre-wrap break-words p-5 font-sans text-sm text-gray-700">
             {message.text_body || '(sem conteúdo)'}
           </pre>
         )}
@@ -129,7 +133,7 @@ export default function MessagePage() {
           type="button"
           disabled={busy}
           onClick={() => void toggleRead()}
-          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
         >
           {message.is_read ? 'Marcar como não lida' : 'Marcar como lida'}
         </button>
@@ -137,7 +141,7 @@ export default function MessagePage() {
           type="button"
           disabled={busy}
           onClick={() => void remove()}
-          className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+          className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
         >
           Eliminar
         </button>

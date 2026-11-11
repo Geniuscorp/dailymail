@@ -41,11 +41,13 @@ function ChangePasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 rounded-md border border-gray-200 bg-white p-4">
-      <h2 className="text-base font-semibold text-gray-900">Mudar senha</h2>
-      <p className="text-xs text-gray-500">
-        Isto termina a sessão em todos os outros dispositivos; este fica com a sessão ativa.
-      </p>
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">Mudar senha</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          Isto termina a sessão em todos os outros dispositivos; este fica com a sessão ativa.
+        </p>
+      </div>
       <div>
         <label htmlFor="current-password" className="block text-sm font-medium text-gray-700">
           Senha atual
@@ -57,7 +59,7 @@ function ChangePasswordForm() {
           required
           value={currentPassword}
           onChange={(e) => setCurrentPassword(e.target.value)}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-gray-900 focus:outline-none"
+          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
         />
       </div>
       <div>
@@ -72,7 +74,7 @@ function ChangePasswordForm() {
           minLength={8}
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-gray-900 focus:outline-none"
+          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
         />
       </div>
       <div>
@@ -87,7 +89,7 @@ function ChangePasswordForm() {
           minLength={8}
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-gray-900 focus:outline-none"
+          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
         />
       </div>
       {error && (
@@ -95,11 +97,11 @@ function ChangePasswordForm() {
           {error}
         </p>
       )}
-      {success && <p className="text-sm text-green-700">Senha alterada.</p>}
+      {success && <p className="text-sm text-emerald-700">Senha alterada.</p>}
       <button
         type="submit"
         disabled={submitting}
-        className="rounded-md bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
+        className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
       >
         {submitting ? 'A guardar…' : 'Guardar'}
       </button>
@@ -129,11 +131,13 @@ function DeleteAccountSection() {
   }
 
   return (
-    <div className="space-y-3 rounded-md border border-red-200 bg-white p-4">
-      <h2 className="text-base font-semibold text-gray-900">Apagar conta</h2>
-      <p className="text-xs text-gray-500">
-        O endereço fica reservado (não pode ser recriado) e deixa de poder ser usado para entrar.
-      </p>
+    <div className="space-y-3 rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">Apagar conta</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          O endereço fica reservado (não pode ser recriado) e deixa de poder ser usado para entrar.
+        </p>
+      </div>
       {error && (
         <p role="alert" className="text-sm text-red-600">
           {error}
@@ -143,7 +147,7 @@ function DeleteAccountSection() {
         type="button"
         disabled={busy}
         onClick={() => void handleDelete()}
-        className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+        className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
       >
         Apagar a minha conta
       </button>
@@ -153,8 +157,8 @@ function DeleteAccountSection() {
 
 export default function AccountPage() {
   return (
-    <section className="mx-auto max-w-md space-y-4">
-      <h1 className="text-2xl font-semibold">Definições</h1>
+    <section className="mx-auto max-w-md space-y-5">
+      <h1 className="text-2xl font-bold tracking-tight text-gray-900">Definições</h1>
       <ChangePasswordForm />
       <DeleteAccountSection />
     </section>

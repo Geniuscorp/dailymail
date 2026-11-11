@@ -48,72 +48,76 @@ export default function CreateMailboxPage() {
   }
 
   return (
-    <section className="mx-auto max-w-sm space-y-6">
-      <h1 className="text-2xl font-semibold">Criar conta</h1>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="local-part" className="block text-sm font-medium text-gray-700">
-            Endereço
-          </label>
-          <div className="mt-1 flex items-center rounded-md border border-gray-300 focus-within:border-gray-900">
-            <input
-              id="local-part"
-              autoComplete="username"
-              required
-              value={localPart}
-              onChange={(e) => setLocalPart(e.target.value)}
-              className="w-full rounded-l-md px-3 py-2 focus:outline-none"
-              placeholder="o-que-quiseres"
-            />
-            <span className="shrink-0 pr-3 text-gray-500">@{MAIL_DOMAIN}</span>
+    <section className="mx-auto max-w-sm">
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h1 className="text-xl font-semibold text-gray-900">Criar conta</h1>
+        <p className="mt-1 text-sm text-gray-500">Escolhe um endereço e uma senha para o proteger.</p>
+
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <div>
+            <label htmlFor="local-part" className="block text-sm font-medium text-gray-700">
+              Endereço
+            </label>
+            <div className="mt-1 flex items-center overflow-hidden rounded-lg border border-gray-300 transition-colors focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100">
+              <input
+                id="local-part"
+                autoComplete="username"
+                required
+                value={localPart}
+                onChange={(e) => setLocalPart(e.target.value)}
+                className="w-full px-3 py-2 text-sm outline-none"
+                placeholder="o-que-quiseres"
+              />
+              <span className="shrink-0 bg-gray-50 px-3 py-2 text-sm text-gray-500">@{MAIL_DOMAIN}</span>
+            </div>
           </div>
-        </div>
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-            Senha
-          </label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-gray-900 focus:outline-none"
-          />
-        </div>
-        <div>
-          <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700">
-            Confirmar senha
-          </label>
-          <input
-            id="confirm-password"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-gray-900 focus:outline-none"
-          />
-        </div>
-        {error && (
-          <p role="alert" className="text-sm text-red-600">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded-md bg-gray-900 px-4 py-2 text-white hover:bg-gray-700 disabled:opacity-50"
-        >
-          {submitting ? 'A criar…' : 'Criar conta'}
-        </button>
-      </form>
-      <p className="text-center text-sm text-gray-600">
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              Senha
+            </label>
+            <input
+              id="password"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div>
+            <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700">
+              Confirmar senha
+            </label>
+            <input
+              id="confirm-password"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          {error && (
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {submitting ? 'A criar…' : 'Criar conta'}
+          </button>
+        </form>
+      </div>
+      <p className="mt-4 text-center text-sm text-gray-500">
         Já tens uma conta?{' '}
-        <Link to="/login" className="underline">
+        <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-700">
           Consultar caixa
         </Link>
       </p>

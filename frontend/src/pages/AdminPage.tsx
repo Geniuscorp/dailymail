@@ -51,7 +51,7 @@ function AdminLoginForm({ onSuccess }: { onSuccess: () => void }) {
             required
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-gray-900 focus:outline-none"
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
           />
         </div>
         <div>
@@ -65,7 +65,7 @@ function AdminLoginForm({ onSuccess }: { onSuccess: () => void }) {
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-gray-900 focus:outline-none"
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
           />
         </div>
         {error && (
@@ -76,7 +76,7 @@ function AdminLoginForm({ onSuccess }: { onSuccess: () => void }) {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded-md bg-gray-900 px-4 py-2 text-white hover:bg-gray-700 disabled:opacity-50"
+          className="w-full rounded-md bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
         >
           {submitting ? 'A entrar…' : 'Entrar'}
         </button>
@@ -238,7 +238,7 @@ export default function AdminPage() {
             type="button"
             onClick={() => setTab(value)}
             className={`rounded-md px-3 py-1.5 text-sm ${
-              tab === value ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
+              tab === value ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
             {value === 'mailboxes' ? 'Caixas' : 'Mensagens'}
@@ -259,7 +259,7 @@ export default function AdminPage() {
               value={mailboxSearch}
               onChange={(event) => setMailboxSearch(event.target.value)}
               placeholder="Procurar por endereço"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
             />
             <button
               type="submit"
@@ -313,7 +313,7 @@ export default function AdminPage() {
               value={messageSearch}
               onChange={(event) => setMessageSearch(event.target.value)}
               placeholder="Procurar por remetente, destinatário ou assunto"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
             />
             <button
               type="submit"
