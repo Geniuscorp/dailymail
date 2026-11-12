@@ -1,9 +1,25 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import AccountSwitcherPanel from '../components/AccountSwitcherPanel'
 import InfoSidebar from '../components/InfoSidebar'
 import { logout as logoutRequest } from '../services/api'
 import { clearToken, forgetAccountByToken, getToken } from '../services/session'
+
+function MenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+      <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
 
 function MailIcon() {
   return (
@@ -23,6 +39,7 @@ function MailIcon() {
 export default function AppLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const loggedIn = getToken() !== null
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   async function logout() {
     await logoutRequest()
@@ -33,12 +50,28 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const header = (
-    <header className="z-10 shrink-0 border-b border-gray-200 bg-white">
+    <header className="z-20 shrink-0 border-b border-gray-200 bg-white">
       <div className="flex items-center justify-between px-6 py-3">
-        <Link to={loggedIn ? '/inbox' : '/'} className="flex items-center gap-2">
-          <MailIcon />
-          <span className="text-lg font-semibold tracking-tight text-gray-900">DailyMail</span>
-        </Link>
+        <div className="flex items-center gap-1">
+          {loggedIn && (
+            // Only the sidebars (account info, account switcher) are
+            // reachable from here: on a narrow screen they aren't shown
+            // beside the inbox, so without this they would be entirely
+            // unreachable, not just visually hidden.
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Abrir menu de conta"
+              className="-ml-1.5 rounded-lg p-1.5 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 lg:hidden"
+            >
+              <MenuIcon />
+            </button>
+          )}
+          <Link to={loggedIn ? '/inbox' : '/'} className="flex items-center gap-2">
+            <MailIcon />
+            <span className="text-lg font-semibold tracking-tight text-gray-900">DailyMail</span>
+          </Link>
+        </div>
         <div className="flex items-center gap-1">
           {loggedIn && (
             <>
@@ -60,6 +93,33 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </div>
     </header>
+  )
+
+  // Same two panels the desktop sidebars show, reused as-is: an overlay
+  // drawer on screens below `lg`, where there is no room for them beside
+  // the inbox. Always unmounted (not just hidden) above `lg`, so resizing
+  // back down never leaves it stuck open from stale state.
+  const mobileMenu = loggedIn && mobileMenuOpen && (
+    <div className="fixed inset-0 z-30 lg:hidden">
+      <div className="absolute inset-0 bg-black/30" onClick={() => setMobileMenuOpen(false)} />
+      <div className="absolute inset-y-0 left-0 w-80 max-w-[85vw] overflow-y-auto bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+          <span className="text-sm font-semibold text-gray-900">Menu</span>
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-label="Fechar menu"
+            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+        <div className="divide-y divide-gray-100">
+          <AccountSwitcherPanel />
+          <InfoSidebar />
+        </div>
+      </div>
+    </div>
   )
 
   if (!loggedIn) {
@@ -84,6 +144,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-screen flex-col bg-gray-50">
       {header}
+      {mobileMenu}
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-64 shrink-0 overflow-y-auto border-r border-gray-200 bg-white lg:block">
           <InfoSidebar />

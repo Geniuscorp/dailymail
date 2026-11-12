@@ -19,8 +19,21 @@ client.interceptors.request.use((config) => {
   return config
 })
 
+// These two endpoints work without a valid session (that's the point of
+// them), so a 401 from either one means "wrong password" / "bad request",
+// never "the current session is invalid" - even though the request
+// interceptor above attaches today's token to every request regardless of
+// whether the endpoint needs it. Without this exclusion, typing the wrong
+// password for a *different* account in the switcher's quick-login form
+// would log the user out of the account they were already in.
+const UNAUTHENTICATED_PATHS = new Set(['/mailboxes/login', '/mailboxes'])
+
 client.interceptors.response.use(undefined, (error: unknown) => {
-  if (axios.isAxiosError(error) && error.response?.status === 401) {
+  if (
+    axios.isAxiosError(error) &&
+    error.response?.status === 401 &&
+    !UNAUTHENTICATED_PATHS.has(error.config?.url ?? '')
+  ) {
     const token = getToken()
     if (token) {
       // The session was rejected - it expired, was revoked elsewhere, or the
