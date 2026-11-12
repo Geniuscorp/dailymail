@@ -219,18 +219,14 @@ POST /webhooks/inbound-email
 ```
 
 Called by whichever provider `INBOUND_EMAIL_PROVIDER` selects (see
-docs/ARCHITECTURE.md § Inbound Email Provider for why `forward_email` is
+docs/ARCHITECTURE.md § Inbound Email Provider for why `aws_ses` is
 the default). Request shape and verification differ per provider:
 
-**`forward_email` (default)** — called by forwardemail.net, already parsed
-as JSON via `mailparser`. No signing headers; verified instead by a
-reverse DNS lookup of the caller's IP (must resolve to
-`mx1.forwardemail.net` or `mx2.forwardemail.net`). Key body fields:
-`session.recipient`, `session.sender`, `subject`, `text`, `html`,
-`messageId`, `attachments` (each with `content.data` as a byte array).
-
-**`cloudflare_worker`** — called by the Cloudflare Email Worker (see
-`worker/README.md`). Headers:
+**`aws_ses` (default)** and **`cloudflare_worker`** share one request
+shape and verification scheme — the only difference is who sends it: a
+small Lambda (`aws/ses-inbound-forwarder/`) parsing the raw MIME SES
+stores in S3, or the Cloudflare Email Worker (see `worker/README.md`).
+Headers:
 - `X-DailyMail-Timestamp`: unix seconds; rejected if outside `INBOUND_WEBHOOK_TOLERANCE_SECONDS`
 - `X-DailyMail-Signature`: hex HMAC-SHA256 of `"<timestamp>.<raw body>"` using `INBOUND_WEBHOOK_SECRET`
 
@@ -246,6 +242,13 @@ Body:
   "received_at": "2026-01-10T12:00:00Z"
 }
 ```
+
+**`forward_email` (alternative)** — called by forwardemail.net, already
+parsed as JSON via `mailparser`. No signing headers; verified instead by a
+reverse DNS lookup of the caller's IP (must resolve to
+`mx1.forwardemail.net` or `mx2.forwardemail.net`). Key body fields:
+`session.recipient`, `session.sender`, `subject`, `text`, `html`,
+`messageId`, `attachments` (each with `content.data` as a byte array).
 
 Responses: `202 {"status": "stored"|"duplicate"|"ignored"}` (`ignored` for unknown or inactive recipients), `401` for authentication failures, `413` above `MAX_INBOUND_PAYLOAD_MB`, `429` above `RATE_LIMIT_WEBHOOK_PER_MINUTE`, `503` when the secret is not configured.
 
