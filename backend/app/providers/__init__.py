@@ -9,7 +9,12 @@ __all__ = ["InboundEmailProvider", "build_inbound_provider"]
 
 def build_inbound_provider() -> InboundEmailProvider:
     settings = get_settings()
-    if settings.inbound_email_provider == "cloudflare_worker":
+    if settings.inbound_email_provider in ("cloudflare_worker", "aws_ses"):
+        # Both values point at the exact same signed-JSON-webhook contract
+        # (see CloudflareWorkerProvider's docstring): the Cloudflare Worker
+        # and the AWS Lambda forwarder (aws/ses-inbound-forwarder/) each
+        # build the same payload shape and sign it the same way, so there is
+        # nothing provider-specific left for this class to do differently.
         return CloudflareWorkerProvider(
             secret=settings.inbound_webhook_secret,
             tolerance_seconds=settings.inbound_webhook_tolerance_seconds,

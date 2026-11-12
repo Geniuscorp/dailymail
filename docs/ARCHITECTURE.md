@@ -150,27 +150,47 @@ nginx's own `proxy_buffering off` reach).
 
 `app/providers/` abstracts the inbound source behind one interface
 (`InboundEmailProvider.verify()` + `.parse()`), selected by
-`INBOUND_EMAIL_PROVIDER`. Two implementations exist:
+`INBOUND_EMAIL_PROVIDER`. One implementation (`CloudflareWorkerProvider`)
+backs two config values, since both senders speak the exact same signed
+JSON contract — see below.
 
-#### forwardemail.net (`forward_email`, default)
+#### AWS SES (`aws_ses`, default)
+- Amazon SES receives mail for the domain; an SES receipt rule stores the
+  raw MIME in S3 and invokes a Lambda function
+  (`aws/ses-inbound-forwarder/handler.py`)
+- The Lambda parses the MIME with Python's standard `email` library (no
+  third-party dependency), builds the same JSON shape the Cloudflare
+  Worker sends, signs it with HMAC-SHA256 the same way, and POSTs it to
+  the webhook — so the backend uses `CloudflareWorkerProvider` unchanged
+  for this config value too; `verify()` checks that signature + a
+  timestamp-tolerance window, identically either way
+- Chosen over both alternatives below: SES's own spam/virus scanning only
+  annotates a verdict on the message by default (it does not reject
+  delivery), it is pay-per-use rather than a shared free-tier reputation
+  pool, and it has no TLD restriction
+
+#### forwardemail.net (`forward_email`, kept as an alternative)
 - forwardemail.net receives mail for the domain and POSTs it, already
   parsed as JSON (via the `mailparser` library), to the webhook
 - No HMAC signing available on the free plan; `verify()` instead resolves
   the caller's IP via reverse DNS and checks it against
   `mx1.forwardemail.net` / `mx2.forwardemail.net` — still sound, since that
   lookup runs against the real TCP source IP, not a spoofable header
-- Chosen over Cloudflare Email Routing after Cloudflare's own built-in
-  anti-spam filtering was found to silently drop mail from a real sender
-  (no bounce, nothing in Cloudflare's own activity log) — confirmed by
-  bypassing the Worker entirely and still seeing nothing arrive
+- Known limitations: runs its own denylist (can also silently reject a
+  blocklisted sender IP, though with a retried `421` and a visible log
+  entry, unlike Cloudflare below) and restricts its free plan to a fixed
+  list of TLDs that does not include `.site`
 
 #### Cloudflare Email Worker (`cloudflare_worker`, kept as an alternative)
 - Cloudflare Email Routing receives emails for the domain
 - A dedicated Cloudflare Worker (`worker/`) converts the MIME email to a
   JSON payload, signs it with HMAC-SHA256, and POSTs it to the webhook
 - `verify()` checks that signature + a timestamp-tolerance window
-- Known limitation (see above): Cloudflare's own spam filtering runs
-  ahead of the Worker and can drop mail from some senders with no trace
+- Known limitation: Cloudflare's own spam filtering (an RBL lookup against
+  the sending IP) runs ahead of the Worker and silently drops mail from
+  some senders with no trace — no bounce, nothing in Cloudflare's own
+  Activity Log — confirmed in production with a real sender (VFS Global's
+  OTP emails), including with the Worker bypassed entirely
 
 ## Security Measures
 

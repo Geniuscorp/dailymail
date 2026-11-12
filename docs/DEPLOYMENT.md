@@ -332,59 +332,153 @@ deleted, so the next run retries once the R2 credentials are in place.
 
 ## Email Provider Setup
 
-Two inbound providers are implemented (`app/providers/`), selected with
-`INBOUND_EMAIL_PROVIDER`. **forwardemail.net is the default and
-recommended one** — see why below. The Cloudflare Email Worker stays in
-the repo (`worker/`) as an alternative.
+Three inbound providers are implemented (`app/providers/`), selected with
+`INBOUND_EMAIL_PROVIDER`. **aws_ses is the default and recommended one** —
+see why below. forwardemail.net and the Cloudflare Email Worker stay in
+the repo as alternatives.
 
-### Why forward_email, not cloudflare_worker
+### Why aws_ses, not cloudflare_worker or forward_email
 
-Cloudflare Email Routing has its own built-in anti-spam engine that runs
-*before* any routing rule, and it has been observed in production to
-silently drop mail from some senders — no bounce to the sender, nothing in
-Cloudflare's own Activity Log, nothing our Worker or backend ever sees.
-This happened with a real sender (VFS Global's OTP emails, sent from a
-different subdomain than their other mail) and was confirmed with a direct
-test: even bypassing the Worker entirely (`Email Routing` → routing rule →
-"Send to an email" instead of "Send to a Worker"), the message still never
-arrived anywhere, including spam. forwardemail.net is a different
-receiving server with its own IP reputation and no equivalent built-in
-spam engine in front of routing.
+Both alternatives turned out to silently reject mail from some senders
+before it ever reaches a routing rule, a Worker, or this app — with no
+bounce and nothing in their own logs:
 
-### Setting up forward_email
+- **Cloudflare Email Routing** rejects at the SMTP level when the sending
+  IP is on a third-party RBL it consults (Abusix) — confirmed in
+  production with a real sender (VFS Global's OTP emails): even bypassing
+  the Worker entirely (`Email Routing` → routing rule → "Send to an
+  email" instead of "Send to a Worker"), the message still never arrived.
+- **forwardemail.net** runs its own equivalent denylist (UCEPROTECT) and,
+  separately, restricts its free plan to a fixed list of TLDs that does
+  **not** include `.site` — so `kupay.site` specifically would need a paid
+  plan there regardless of the RBL question.
+
+Both are shared infrastructure: thousands of other domains' reputations
+share the same receiving pool, so one domain's abuse (or a blocklist
+decision Cloudflare/Forward Email didn't make themselves) can silently
+cost you mail you never sent and never see. Amazon SES receiving is
+pay-per-use (no shared free-tier reputation pool to be collateral damage
+of), has no TLD restriction, and its own spam/virus scanning only
+*annotates* a verdict on the message by default — it does not reject
+delivery unless you explicitly add a rule condition that does. Cost at
+personal/friends scale is a few cents a month (SES: **$0.10 per 1,000
+messages received + $0.09 per 1,000 "chunks" of 256KB**; S3 and Lambda
+costs for this setup are negligible at this volume) — no subscription, no
+TLD gate.
+
+### Setting up aws_ses
+
+Architecture: SES receives the mail → a receipt rule stores the raw
+message in an S3 bucket and invokes a small Lambda function
+(`aws/ses-inbound-forwarder/handler.py`) → the Lambda parses the MIME with
+Python's standard library (no dependencies to install) and POSTs the exact
+same signed JSON payload the Cloudflare Worker already sends, to the same
+webhook, with the same secret → the backend needs **zero new code** for
+this (see `app/providers/__init__.py`: `aws_ses` and `cloudflare_worker`
+share one implementation).
+
+SES receiving is only available in a few regions — these steps use
+**us-east-1 (N. Virginia)**; swap it everywhere if you use a different one.
+
+1. **Create/sign in to an AWS account**, region **us-east-1**.
+
+2. **Verify the domain in SES** (Console → *Simple Email Service* →
+   **Configuration → Verified identities** → **Create identity** → *Domain*
+   → `kupay.site` → enable **DKIM signing**, keep the default "Easy DKIM").
+   SES shows a set of DNS records (DKIM CNAMEs, and an MX if you let it
+   manage receiving). Add them at your DNS registrar. Wait for the
+   identity's status to flip to **Verified** (can take up to a few hours,
+   usually minutes).
+
+3. **Create an S3 bucket** for the raw mail (Console → *S3* → **Create
+   bucket**, e.g. `kupay-site-inbound-mail`, same region, block all public
+   access — default). Add a bucket policy allowing SES to write to it
+   (**Permissions** tab → **Bucket policy**):
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Sid": "AllowSESPuts",
+       "Effect": "Allow",
+       "Principal": { "Service": "ses.amazonaws.com" },
+       "Action": "s3:PutObject",
+       "Resource": "arn:aws:s3:::kupay-site-inbound-mail/*",
+       "Condition": { "StringEquals": { "aws:Referer": "<your-aws-account-id>" } }
+     }]
+   }
+   ```
+
+4. **Create the Lambda function** (Console → *Lambda* → **Create
+   function** → Author from scratch, name `ses-inbound-forwarder`, runtime
+   **Python 3.12**):
+   - Paste the entire contents of `aws/ses-inbound-forwarder/handler.py`
+     into the inline code editor, replacing the default `lambda_function.py`.
+   - **Configuration → General configuration**: set **Handler** to
+     `handler.handler` (not the default `lambda_function.lambda_handler`),
+     and raise **Timeout** to 15 seconds.
+   - **Configuration → Environment variables**:
+     ```
+     WEBHOOK_URL=https://mail.kupay.site/api/webhooks/inbound-email
+     WEBHOOK_SECRET=<generate with: python -c "import secrets; print(secrets.token_urlsafe(32))">
+     BUCKET_NAME=kupay-site-inbound-mail
+     ```
+   - **Configuration → Permissions** → click the execution role → add an
+     inline policy granting `s3:GetObject` and `s3:DeleteObject` on
+     `arn:aws:s3:::kupay-site-inbound-mail/*`.
+
+5. **Create the SES receipt rule** (Console → SES → **Email receiving** →
+   **Create rule set** if you don't have one, then **Create rule**):
+   - **Recipient conditions**: add `kupay.site` (matches the whole domain;
+     add specific addresses instead if you don't want a catch-all).
+   - **Actions**, in this order:
+     1. **Deliver to S3 bucket** → the bucket from step 3, no prefix (or
+        set one and mirror it in the Lambda's `BUCKET_PREFIX` env var).
+     2. **Invoke AWS Lambda function** → the function from step 4.
+   - Leave spam/virus handling at its default (annotate, don't reject).
+   - **Set as active rule set** (only one rule set is active at a time).
+
+6. **Point DNS at SES** (replace any existing MX record — only one
+   receiving system can be active; a sender does not fall back to a
+   secondary MX just because the primary rejected the message, only if it
+   is fully unreachable):
+   ```
+   MX    @    inbound-smtp.us-east-1.amazonaws.com    priority 10
+   ```
+
+7. Set on the backend:
+   ```
+   INBOUND_EMAIL_PROVIDER=aws_ses
+   INBOUND_WEBHOOK_SECRET=<the same WEBHOOK_SECRET from step 4>
+   ```
+
+8. Send a test email, including one with a PDF/image attachment, and
+   confirm it shows up. Check the Lambda's **Monitor → Logs** (CloudWatch)
+   if it doesn't — a failed webhook POST raises there with the backend's
+   actual response, and the raw message stays in S3 (not deleted) until a
+   later invocation succeeds, so nothing is lost on a transient failure.
+
+If you want Cloudflare as a pure outage fallback (not a spam-filtering
+bypass, which it cannot provide), add it as a secondary MX at a higher
+priority number; most senders will never need it.
+
+### Setting up forward_email instead
 
 1. Create a free account at [forwardemail.net](https://forwardemail.net)
-   and add the domain (`kupay.site`).
-2. Set DNS records at the registrar (replacing any existing Cloudflare
-   Email Routing MX records — mail can only have one active receiving
-   system at a time; a sender does **not** fall back to a secondary MX
-   just because the primary silently filtered the message, only if it is
-   fully unreachable):
+   and add the domain — note that the free plan only supports a fixed list
+   of TLDs (does **not** include `.site`); a domain outside that list
+   needs a paid plan there regardless of the steps below.
+2. Set DNS records at the registrar:
    ```
    MX    @    mx1.forwardemail.net    priority 0
    MX    @    mx2.forwardemail.net    priority 0
    TXT   @    <domain verification value Forward Email gives you>
    TXT   @    forward-email=https://<your-public-domain>/api/webhooks/inbound-email?raw=false
    ```
-   The `?raw=false` query string skips sending the full raw MIME message
-   in the payload, which this provider doesn't need (it already gets the
-   parsed fields) — smaller payloads, faster delivery.
-3. Set on the backend:
-   ```
-   INBOUND_EMAIL_PROVIDER=forward_email
-   ```
-   No secret to configure: the free plan has no HMAC signing key (that's a
-   paid-plan feature), so this provider verifies deliveries by resolving
-   the caller's IP via reverse DNS and checking it resolves to
-   `mx1.forwardemail.net` or `mx2.forwardemail.net` — the method
-   forwardemail.net's own docs recommend for this case. Still sound: that
-   lookup runs against the connection's real source IP, which can't be
-   spoofed the way a header could be.
+3. Set on the backend: `INBOUND_EMAIL_PROVIDER=forward_email`. No secret to
+   configure: the free plan has no HMAC signing key, so this provider
+   verifies deliveries by resolving the caller's IP via reverse DNS and
+   checking it resolves to `mx1.forwardemail.net` or `mx2.forwardemail.net`.
 4. Send a test email with an attachment and confirm it shows up.
-
-If you want Cloudflare as a pure outage fallback (not a spam-filtering
-bypass, which it cannot provide — see above), add it as a secondary MX at
-a higher priority number; most senders will never need it.
 
 ### Setting up cloudflare_worker instead
 
@@ -515,6 +609,19 @@ sqlite3 dailymail.db ".backup backup.db"
 
 ### Email not received
 
+**aws_ses:**
+- Check SES → **Email receiving** → your rule set is **active** and its
+  recipient condition actually matches the address used
+- Check the Lambda's **Monitor → Logs** (CloudWatch) for the invocation —
+  an exception there means the webhook POST failed; the raw message stays
+  in the S3 bucket (not deleted) so no retry is needed once the real cause
+  (wrong `WEBHOOK_SECRET`, wrong `WEBHOOK_URL`, backend down) is fixed
+- Verify `INBOUND_WEBHOOK_SECRET` on the backend matches `WEBHOOK_SECRET`
+  on the Lambda exactly
+- Confirm the MX record actually points at `inbound-smtp.<region>.amazonaws.com`
+  and no other MX record is still active for the domain
+
+**cloudflare_worker:**
 - Check the Cloudflare Worker's logs (dashboard → Workers & Pages → the
   Worker → Logs) for the actual response status the backend returned
 - A bounce naming a status code (e.g. `"rejected by backend (413)"`) means

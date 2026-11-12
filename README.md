@@ -19,7 +19,7 @@ DailyMail lets anyone create a temporary `@kupay.site` address protected by a pa
 | Backend | Python + FastAPI |
 | Database | SQLite |
 | Attachment Storage | Cloudflare R2 |
-| Email Reception | forwardemail.net (default) or Cloudflare Email Routing + Worker (`worker/`, alternative) — see docs/ARCHITECTURE.md |
+| Email Reception | AWS SES + Lambda (`aws/ses-inbound-forwarder/`, default), or forwardemail.net / Cloudflare Email Routing + Worker (`worker/`, alternatives) — see docs/ARCHITECTURE.md |
 | Email Domain | Cloudflare Nameservers |
 | Deployment | Docker Compose (`api` + `web`), nginx serving the SPA and proxying `/api` same-origin |
 
