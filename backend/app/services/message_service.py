@@ -1,4 +1,5 @@
 """Inbound message storage and mailbox message access."""
+import hashlib
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -52,6 +53,25 @@ def sanitize_html(html: Optional[str]) -> Optional[str]:
     )
 
 
+def content_hash(inbound: InboundMessage) -> str:
+    """sha256 of the delivered content.
+
+    Two genuinely different emails differ here (an OTP's code lives in the
+    body), so both are kept. A Cloudflare re-delivery of the *same* email is
+    byte-identical, so it collapses to one. Deliberately excludes received_at
+    (the worker stamps a fresh one on each re-delivery) and the Message-ID
+    (senders reuse it), which are exactly the fields that broke de-duplication.
+    """
+    parts = [
+        inbound.recipient or "",
+        inbound.sender or "",
+        inbound.subject or "",
+        inbound.text_body or "",
+        inbound.html_body or "",
+    ]
+    return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
+
+
 class MessageService:
     def __init__(self, db: Session, storage: Optional[ObjectStorage] = None):
         self.db = db
@@ -68,9 +88,20 @@ class MessageService:
             .first()
         )
         if mailbox is None:
+            logger.info(
+                "inbound dropped: no active mailbox for %r (message-id %r)",
+                inbound.recipient,
+                inbound.provider_message_id,
+            )
             return IngestResult.IGNORED
 
-        if self._already_stored(inbound.provider_message_id):
+        digest = content_hash(inbound)
+        if self._already_stored(mailbox.id, digest):
+            logger.info(
+                "inbound dropped as duplicate for %r (identical content, message-id %r)",
+                inbound.recipient,
+                inbound.provider_message_id,
+            )
             return IngestResult.DUPLICATE
 
         received_at = inbound.received_at or datetime.now(timezone.utc)
@@ -80,6 +111,7 @@ class MessageService:
         message = Message(
             mailbox_id=mailbox.id,
             provider_message_id=inbound.provider_message_id,
+            content_hash=digest,
             sender=inbound.sender,
             recipient=inbound.recipient,
             subject=inbound.subject,
@@ -156,10 +188,15 @@ class MessageService:
             except StorageError:
                 logger.warning("orphaned attachment object could not be removed")
 
-    def _already_stored(self, provider_message_id: str) -> bool:
+    def _already_stored(self, mailbox_id: int, digest: str) -> bool:
+        """A duplicate is the SAME content delivered again to the SAME mailbox
+        (a Cloudflare re-delivery), not merely a reused Message-ID."""
         return (
             self.db.query(Message.id)
-            .filter(Message.provider_message_id == provider_message_id)
+            .filter(
+                Message.mailbox_id == mailbox_id,
+                Message.content_hash == digest,
+            )
             .first()
             is not None
         )

@@ -1,4 +1,6 @@
 """Inbound email webhook routes (called by the configured INBOUND_EMAIL_PROVIDER)."""
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,8 @@ from app.providers.base import InvalidWebhookError
 from app.services.message_service import MessageService
 from app.storage import StorageNotConfiguredError, get_object_storage
 from app.storage.base import ObjectStorage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -59,4 +63,12 @@ async def inbound_email(request: Request, db: Session = Depends(get_db)):
     # missing R2 credentials drops just the attachment(s) it couldn't store,
     # not the message's subject and body.
     result = MessageService(db, storage=_optional_storage()).ingest(inbound)
+    # One visible line per delivery with its outcome. The 202 status alone does
+    # not distinguish stored / ignored (no active mailbox) / duplicate, so this
+    # is what tells you why a given email did or did not land in a mailbox.
+    logger.info(
+        "inbound %s: recipient=%r sender=%r subject=%r message-id=%r",
+        result.value, inbound.recipient, inbound.sender, inbound.subject,
+        inbound.provider_message_id,
+    )
     return {"status": result.value}

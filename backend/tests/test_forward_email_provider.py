@@ -1,5 +1,6 @@
 """Tests for the forwardemail.net inbound provider."""
 import json
+import logging
 import socket
 
 import pytest
@@ -92,13 +93,28 @@ class TestParse:
         with pytest.raises(InvalidWebhookError):
             provider.parse(b"[1, 2, 3]")
 
-    def test_grouped_recipients_do_not_crash_the_parse(self, caplog):
+    def test_grouped_recipients_do_not_crash_the_parse(self):
         # One email addressed to two of our mailboxes at once: only the
         # delivery's own session.recipient is ingested, but it must not
         # raise or silently lose track of the fact that it happened.
-        message = provider.parse(_payload(recipients=["a@kupay.site", "b@kupay.site"]))
+        #
+        # A handler is attached directly to this module's logger rather than
+        # relying on caplog's default root-attached one: app/main.py sets
+        # propagate=False on the "app" logger (so its own stdout handler
+        # doesn't double up with uvicorn's access log), which also stops
+        # this child logger's records from ever reaching the root logger.
+        records: list[logging.LogRecord] = []
+        handler = logging.Handler()
+        handler.emit = records.append
+        provider_logger = logging.getLogger("app.providers.forward_email")
+        provider_logger.addHandler(handler)
+        try:
+            message = provider.parse(_payload(recipients=["a@kupay.site", "b@kupay.site"]))
+        finally:
+            provider_logger.removeHandler(handler)
+
         assert message.recipient == "caixa@kupay.site"
-        assert any("grouped" in rec.message for rec in caplog.records)
+        assert any("grouped" in rec.getMessage() for rec in records)
 
     def test_attachment_buffer_is_decoded_to_bytes(self):
         payload = _payload(

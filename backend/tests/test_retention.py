@@ -54,12 +54,16 @@ def _attachment(filename: str, data: bytes) -> dict:
 
 
 def _deliver(recipient: str, attachments: list[dict]) -> None:
+    # Each call is a distinct email: a unique body so content-hash
+    # de-duplication (which collapses byte-identical re-deliveries) treats two
+    # calls as two messages, as real distinct mail would be.
+    unique = uuid.uuid4()
     payload = {
-        "message_id": f"<{uuid.uuid4()}@worker>",
+        "message_id": f"<{unique}@worker>",
         "sender": "retencao@example.org",
         "recipient": recipient,
         "subject": "Retenção",
-        "text": "Corpo",
+        "text": f"Corpo {unique}",
         "html": None,
         "received_at": datetime.now(timezone.utc).isoformat(),
         "attachments": attachments,

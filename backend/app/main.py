@@ -1,6 +1,7 @@
 """FastAPI application initialization."""
 import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,6 +12,21 @@ from app.storage.base import StorageError
 from app.tasks.retention import run_sweep_once
 
 settings = get_settings()
+
+# The app's own loggers had no handler, so every logger.info/warning in the
+# service (e.g. why an inbound message was dropped) was silently swallowed and
+# only uvicorn's access log showed. Attach one handler to the "app" namespace,
+# at INFO, writing to stdout (where the platform collects logs). Scoped to
+# "app" and with propagate off, so it neither duplicates uvicorn's access log
+# nor depends on root logging config.
+_app_logger = logging.getLogger("app")
+if not _app_logger.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+    _app_logger.addHandler(_handler)
+    _app_logger.setLevel(logging.INFO)
+    _app_logger.propagate = False
+
 logger = logging.getLogger(__name__)
 
 # Short enough that a sweep still runs soon after a container restarts (so
