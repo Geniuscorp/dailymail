@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import AccountSwitcherPanel from '../components/AccountSwitcherPanel'
 import InfoSidebar from '../components/InfoSidebar'
 import { logout as logoutRequest } from '../services/api'
-import { clearToken, getToken } from '../services/session'
+import { clearToken, forgetAccountByToken, getToken } from '../services/session'
 
 function MailIcon() {
   return (
@@ -26,6 +26,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   async function logout() {
     await logoutRequest()
+    const token = getToken()
+    if (token) forgetAccountByToken(token)
     clearToken()
     navigate('/login', { replace: true })
   }

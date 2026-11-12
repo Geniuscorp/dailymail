@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { deleteAccount, updatePassword } from '../services/api'
-import { clearToken } from '../services/session'
+import { clearToken, forgetAccountByToken, getToken } from '../services/session'
 
 function ChangePasswordForm() {
   const [currentPassword, setCurrentPassword] = useState('')
@@ -122,6 +122,8 @@ function DeleteAccountSection() {
     setBusy(true)
     try {
       await deleteAccount()
+      const token = getToken()
+      if (token) forgetAccountByToken(token)
       clearToken()
       navigate('/', { replace: true })
     } catch {

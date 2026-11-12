@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createMailbox, login, MAIL_DOMAIN } from '../services/api'
-import { setToken } from '../services/session'
+import { rememberAccount, setToken } from '../services/session'
 
 const LOCAL_PART_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/
 
@@ -39,6 +39,7 @@ export default function CreateMailboxPage() {
       // ask for it again on a second, separate login screen.
       const token = await login(emailAddress, password)
       setToken(token.access_token)
+      rememberAccount(emailAddress, token.access_token)
       navigate('/inbox', { replace: true })
     } catch (err) {
       setError(describeError(err))

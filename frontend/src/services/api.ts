@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { clearToken, getToken } from './session'
+import { clearToken, forgetAccountByToken, getToken } from './session'
 import type { MailboxInfo, MessageDetail, MessageSummary, TokenResponse } from '../types'
 
 // An empty value means "same origin": nginx proxies /api to the backend.
@@ -20,9 +20,16 @@ client.interceptors.request.use((config) => {
 })
 
 client.interceptors.response.use(undefined, (error: unknown) => {
-  if (axios.isAxiosError(error) && error.response?.status === 401 && getToken()) {
-    clearToken()
-    window.location.assign('/login')
+  if (axios.isAxiosError(error) && error.response?.status === 401) {
+    const token = getToken()
+    if (token) {
+      // The session was rejected - it expired, was revoked elsewhere, or the
+      // password changed. It would never succeed again, so drop it from the
+      // switcher list instead of leaving a "switch" button that just fails.
+      forgetAccountByToken(token)
+      clearToken()
+      window.location.assign('/login')
+    }
   }
   return Promise.reject(error)
 })

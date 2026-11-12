@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { login } from '../services/api'
-import { setToken } from '../services/session'
+import { rememberAccount, setToken } from '../services/session'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -15,8 +15,10 @@ export default function LoginPage() {
     setError(null)
     setSubmitting(true)
     try {
-      const token = await login(email.trim(), password)
+      const normalized = email.trim().toLowerCase()
+      const token = await login(normalized, password)
       setToken(token.access_token)
+      rememberAccount(normalized, token.access_token)
       navigate('/inbox', { replace: true })
     } catch {
       setError('Endereço ou senha incorretos.')
