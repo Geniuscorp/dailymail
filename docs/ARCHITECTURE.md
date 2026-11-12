@@ -146,13 +146,31 @@ nginx's own `proxy_buffering off` reach).
 
 ## External Integrations
 
-### Cloudflare Email Workers
-- Cloudflare Email Routing receives emails for kupay.site
-- Cloudflare Email Worker (serverless function) processes incoming emails
-- Worker converts MIME email to JSON payload
-- Worker POSTs to FastAPI webhook endpoint
-- FastAPI validates and stores message + attachments
-- No provider abstraction needed (dedicated Email Worker)
+### Inbound Email Provider
+
+`app/providers/` abstracts the inbound source behind one interface
+(`InboundEmailProvider.verify()` + `.parse()`), selected by
+`INBOUND_EMAIL_PROVIDER`. Two implementations exist:
+
+#### forwardemail.net (`forward_email`, default)
+- forwardemail.net receives mail for the domain and POSTs it, already
+  parsed as JSON (via the `mailparser` library), to the webhook
+- No HMAC signing available on the free plan; `verify()` instead resolves
+  the caller's IP via reverse DNS and checks it against
+  `mx1.forwardemail.net` / `mx2.forwardemail.net` — still sound, since that
+  lookup runs against the real TCP source IP, not a spoofable header
+- Chosen over Cloudflare Email Routing after Cloudflare's own built-in
+  anti-spam filtering was found to silently drop mail from a real sender
+  (no bounce, nothing in Cloudflare's own activity log) — confirmed by
+  bypassing the Worker entirely and still seeing nothing arrive
+
+#### Cloudflare Email Worker (`cloudflare_worker`, kept as an alternative)
+- Cloudflare Email Routing receives emails for the domain
+- A dedicated Cloudflare Worker (`worker/`) converts the MIME email to a
+  JSON payload, signs it with HMAC-SHA256, and POSTs it to the webhook
+- `verify()` checks that signature + a timestamp-tolerance window
+- Known limitation (see above): Cloudflare's own spam filtering runs
+  ahead of the Worker and can drop mail from some senders with no trace
 
 ## Security Measures
 

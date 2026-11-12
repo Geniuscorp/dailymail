@@ -1,12 +1,12 @@
-"""Inbound email webhook routes (called by the Cloudflare Email Worker)."""
+"""Inbound email webhook routes (called by the configured INBOUND_EMAIL_PROVIDER)."""
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.rate_limit import rate_limited
+from app.providers import build_inbound_provider
 from app.providers.base import InvalidWebhookError
-from app.providers.cloudflare_worker import build_inbound_provider
 from app.services.message_service import MessageService
 from app.storage import StorageNotConfiguredError, get_object_storage
 from app.storage.base import ObjectStorage
@@ -48,8 +48,9 @@ async def inbound_email(request: Request, db: Session = Depends(get_db)):
         ) from exc
 
     headers = {key.lower(): value for key, value in request.headers.items()}
+    client_ip = request.client.host if request.client else None
     try:
-        provider.verify(headers, raw_body)
+        await provider.verify(headers, raw_body, client_ip=client_ip)
         inbound = provider.parse(raw_body)
     except InvalidWebhookError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Rejected webhook delivery") from exc

@@ -32,8 +32,14 @@ class InboundEmailProvider(ABC):
     """Verifies and normalises webhook deliveries from an inbound email source."""
 
     @abstractmethod
-    def verify(self, headers: dict[str, str], raw_body: bytes) -> None:
-        """Raise InvalidWebhookError if the delivery is not authentic."""
+    async def verify(self, headers: dict[str, str], raw_body: bytes, client_ip: Optional[str] = None) -> None:
+        """Raise InvalidWebhookError if the delivery is not authentic.
+
+        Async because not every provider can verify from the body alone: one
+        that checks the caller's IP (e.g. via a reverse DNS lookup, which is
+        a blocking call) needs this to not freeze the single event loop for
+        the duration of that lookup.
+        """
 
     @abstractmethod
     def parse(self, raw_body: bytes) -> InboundMessage:

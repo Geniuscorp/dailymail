@@ -332,11 +332,61 @@ deleted, so the next run retries once the R2 credentials are in place.
 
 ## Email Provider Setup
 
-Inbound mail is handled entirely by Cloudflare: **Email Routing** receives
-it for the domain and hands it to a dedicated **Email Worker**
-(`worker/`), which converts the MIME message to JSON, signs it, and POSTs
-it to `POST /api/webhooks/inbound-email`. There is no provider abstraction
-to swap here by design — see `worker/README.md` for the exact contract.
+Two inbound providers are implemented (`app/providers/`), selected with
+`INBOUND_EMAIL_PROVIDER`. **forwardemail.net is the default and
+recommended one** — see why below. The Cloudflare Email Worker stays in
+the repo (`worker/`) as an alternative.
+
+### Why forward_email, not cloudflare_worker
+
+Cloudflare Email Routing has its own built-in anti-spam engine that runs
+*before* any routing rule, and it has been observed in production to
+silently drop mail from some senders — no bounce to the sender, nothing in
+Cloudflare's own Activity Log, nothing our Worker or backend ever sees.
+This happened with a real sender (VFS Global's OTP emails, sent from a
+different subdomain than their other mail) and was confirmed with a direct
+test: even bypassing the Worker entirely (`Email Routing` → routing rule →
+"Send to an email" instead of "Send to a Worker"), the message still never
+arrived anywhere, including spam. forwardemail.net is a different
+receiving server with its own IP reputation and no equivalent built-in
+spam engine in front of routing.
+
+### Setting up forward_email
+
+1. Create a free account at [forwardemail.net](https://forwardemail.net)
+   and add the domain (`kupay.site`).
+2. Set DNS records at the registrar (replacing any existing Cloudflare
+   Email Routing MX records — mail can only have one active receiving
+   system at a time; a sender does **not** fall back to a secondary MX
+   just because the primary silently filtered the message, only if it is
+   fully unreachable):
+   ```
+   MX    @    mx1.forwardemail.net    priority 0
+   MX    @    mx2.forwardemail.net    priority 0
+   TXT   @    <domain verification value Forward Email gives you>
+   TXT   @    forward-email=https://<your-public-domain>/api/webhooks/inbound-email?raw=false
+   ```
+   The `?raw=false` query string skips sending the full raw MIME message
+   in the payload, which this provider doesn't need (it already gets the
+   parsed fields) — smaller payloads, faster delivery.
+3. Set on the backend:
+   ```
+   INBOUND_EMAIL_PROVIDER=forward_email
+   ```
+   No secret to configure: the free plan has no HMAC signing key (that's a
+   paid-plan feature), so this provider verifies deliveries by resolving
+   the caller's IP via reverse DNS and checking it resolves to
+   `mx1.forwardemail.net` or `mx2.forwardemail.net` — the method
+   forwardemail.net's own docs recommend for this case. Still sound: that
+   lookup runs against the connection's real source IP, which can't be
+   spoofed the way a header could be.
+4. Send a test email with an attachment and confirm it shows up.
+
+If you want Cloudflare as a pure outage fallback (not a spam-filtering
+bypass, which it cannot provide — see above), add it as a secondary MX at
+a higher priority number; most senders will never need it.
+
+### Setting up cloudflare_worker instead
 
 1. Install and configure the Worker (full steps in `worker/README.md`):
    ```bash
@@ -360,6 +410,11 @@ to swap here by design — see `worker/README.md` for the exact contract.
    → **Enable Email Routing** (this adds the MX records automatically) →
    add a routing rule, `*@kupay.site` (or specific addresses) → **Send to a
    Worker** → the Worker deployed above.
+6. Set on the backend:
+   ```
+   INBOUND_EMAIL_PROVIDER=cloudflare_worker
+   INBOUND_WEBHOOK_SECRET=<the secret from step 3>
+   ```
 
 A bounce from the receiving mail server citing a `4xx`/`5xx` and a status
 code (e.g. `"Delivery rejected by backend (413)"`) means the **Worker**

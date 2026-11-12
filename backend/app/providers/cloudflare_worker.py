@@ -12,7 +12,6 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from app.core.config import get_settings
 from app.providers.base import InboundAttachment, InboundEmailProvider, InboundMessage, InvalidWebhookError
 
 SIGNATURE_HEADER = "x-dailymail-signature"
@@ -88,7 +87,7 @@ class CloudflareWorkerProvider(InboundEmailProvider):
         self._secret = secret
         self._tolerance = tolerance_seconds
 
-    def verify(self, headers: dict[str, str], raw_body: bytes) -> None:
+    async def verify(self, headers: dict[str, str], raw_body: bytes, client_ip: Optional[str] = None) -> None:
         timestamp = headers.get(TIMESTAMP_HEADER)
         signature = headers.get(SIGNATURE_HEADER)
         if not timestamp or not signature:
@@ -128,13 +127,3 @@ class CloudflareWorkerProvider(InboundEmailProvider):
             received_at=_parse_timestamp(payload.get("received_at")),
             attachments=_parse_attachments(payload.get("attachments")),
         )
-
-
-def build_inbound_provider() -> InboundEmailProvider:
-    settings = get_settings()
-    if settings.inbound_email_provider == "cloudflare_worker":
-        return CloudflareWorkerProvider(
-            secret=settings.inbound_webhook_secret,
-            tolerance_seconds=settings.inbound_webhook_tolerance_seconds,
-        )
-    raise RuntimeError(f"Unsupported INBOUND_EMAIL_PROVIDER: {settings.inbound_email_provider!r}")

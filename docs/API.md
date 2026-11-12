@@ -218,9 +218,19 @@ Deleting a message deletes its objects from R2.
 POST /webhooks/inbound-email
 ```
 
-Called by the Cloudflare Email Worker (see `worker/README.md`).
+Called by whichever provider `INBOUND_EMAIL_PROVIDER` selects (see
+docs/ARCHITECTURE.md § Inbound Email Provider for why `forward_email` is
+the default). Request shape and verification differ per provider:
 
-Headers:
+**`forward_email` (default)** — called by forwardemail.net, already parsed
+as JSON via `mailparser`. No signing headers; verified instead by a
+reverse DNS lookup of the caller's IP (must resolve to
+`mx1.forwardemail.net` or `mx2.forwardemail.net`). Key body fields:
+`session.recipient`, `session.sender`, `subject`, `text`, `html`,
+`messageId`, `attachments` (each with `content.data` as a byte array).
+
+**`cloudflare_worker`** — called by the Cloudflare Email Worker (see
+`worker/README.md`). Headers:
 - `X-DailyMail-Timestamp`: unix seconds; rejected if outside `INBOUND_WEBHOOK_TOLERANCE_SECONDS`
 - `X-DailyMail-Signature`: hex HMAC-SHA256 of `"<timestamp>.<raw body>"` using `INBOUND_WEBHOOK_SECRET`
 
