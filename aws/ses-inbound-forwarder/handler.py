@@ -116,6 +116,12 @@ def _forward(payload: dict, webhook_url: str, secret: str) -> None:
 
 
 def handler(event, context):
+    # A scheduled EventBridge rule pings this function every few minutes with
+    # a plain {"source": "aws.events", ...} event (no "Records") just to keep
+    # it warm and avoid a cold-start delay on the next real delivery.
+    if "Records" not in event:
+        return {"statusCode": 200, "body": "warmup ping"}
+
     webhook_url = os.environ["WEBHOOK_URL"]
     webhook_secret = os.environ["WEBHOOK_SECRET"]
     bucket_name = os.environ["BUCKET_NAME"]
