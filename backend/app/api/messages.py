@@ -62,11 +62,10 @@ async def stream_messages(credentials: HTTPAuthorizationCredentials = Depends(se
     """Server-Sent Events: pushes a nudge when new mail lands, instead of the
     client polling GET /messages on a timer.
 
-    The database only has one connection in total (SQLite + StaticPool, see
-    core/database.py), and this response can stay open for as long as a
-    browser tab is, so — unlike every other route here — it must NOT depend
-    on the request-scoped `get_db` session (that would hold the single
-    connection hostage for the whole stream and freeze the rest of the app).
+    This response can stay open for as long as a browser tab is, so — unlike
+    every other route here — it must NOT depend on the request-scoped
+    `get_db` session: that would keep a pooled database connection checked
+    out for the whole stream, and a few open tabs would exhaust the pool.
     The token is resolved with its own short-lived session instead, closed
     before the long-lived generator starts.
     """

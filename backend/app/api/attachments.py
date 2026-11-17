@@ -63,6 +63,9 @@ def download_attachment(
     if attachment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
 
+    # The attachment row is loaded; give the connection back to the pool
+    # before the (possibly slow) object-storage transfer.
+    db.close()
     started = time.monotonic()
     try:
         data = service.read_attachment(attachment)
