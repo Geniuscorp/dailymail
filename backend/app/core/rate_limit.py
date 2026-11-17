@@ -13,6 +13,7 @@ option in the deployment guide, since there the proxy is 127.0.0.1). Without
 that trust every request looks like it comes from the proxy's own address and
 this becomes one shared budget for every real visitor.
 """
+import logging
 import math
 import threading
 import time
@@ -22,6 +23,8 @@ from typing import Deque, Optional
 from fastapi import HTTPException, Request, status
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class SlidingWindowLimiter:
@@ -80,6 +83,13 @@ def rate_limited(scope: str, limit_setting: str, window_seconds: int = 60):
         limit = getattr(settings, limit_setting)
         retry_after = limiter.hit(f"{scope}:{client}", limit, window_seconds)
         if retry_after is not None:
+            logger.warning(
+                "rate limited scope=%s client=%s xff=%r retry_after=%.0fs",
+                scope,
+                client,
+                request.headers.get("x-forwarded-for"),
+                retry_after,
+            )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Too many requests, try again later",
