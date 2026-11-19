@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
-import nh3
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,15 +17,10 @@ from app.models.mailbox import Mailbox, MailboxStatus
 from app.models.message import Message
 from app.providers.base import InboundMessage
 from app.services.attachment_policy import AttachmentRejectedError, validate_attachment
+from app.services.html_sanitizer import sanitize_html
 from app.storage.base import ObjectStorage, StorageError
 
 logger = logging.getLogger(__name__)
-
-HTML_ALLOWED_TAGS = {
-    "a", "abbr", "b", "blockquote", "br", "code", "div", "em", "h1", "h2", "h3",
-    "h4", "h5", "h6", "hr", "i", "li", "ol", "p", "pre", "small", "span",
-    "strong", "table", "tbody", "td", "th", "thead", "tr", "u", "ul",
-}
 
 
 class IngestResult(str, Enum):
@@ -40,17 +34,6 @@ def _not_expired(now: Optional[datetime] = None):
     reference = now or datetime.now(timezone.utc)
     cutoff = reference.astimezone(timezone.utc).replace(tzinfo=None)
     return or_(Message.expires_at.is_(None), Message.expires_at > cutoff)
-
-
-def sanitize_html(html: Optional[str]) -> Optional[str]:
-    if not html:
-        return None
-    return nh3.clean(
-        html,
-        tags=HTML_ALLOWED_TAGS,
-        link_rel="noopener noreferrer nofollow",
-        url_schemes={"http", "https", "mailto"},
-    )
 
 
 def content_hash(inbound: InboundMessage) -> str:
