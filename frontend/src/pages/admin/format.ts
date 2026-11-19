@@ -1,7 +1,4 @@
-// The API sends naive UTC timestamps; without a zone the browser would read them as local time.
-export function parseUtc(value: string): Date {
-  return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : `${value}Z`)
-}
+import { parseUtc } from '../../utils/datetime'
 
 export function formatDate(value: string | null | undefined): string {
   if (!value) return '—'
