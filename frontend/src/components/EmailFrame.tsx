@@ -12,11 +12,24 @@ const BASE_STYLE =
 // Below this, shrinking to fit makes text unreadable: scroll sideways instead.
 const MIN_SCALE = 0.35
 
+// Mail stored before the sanitiser kept layout arrives with every table stripped bare
+// (no border, padding or header colour), which reads as unaligned text. Give such tables
+// a plain grid. Tables that carry any styling of their own are left exactly as authored.
+const LEGACY_TABLE_STYLE =
+  'table{border-collapse:collapse;margin:8px 0}' +
+  'th,td{border:1px solid #cbd5e1;padding:6px 10px;text-align:left;vertical-align:top}' +
+  'th{background:#e0f2fe;font-weight:600}'
+
+function isStrippedTable(html: string): boolean {
+  return /<table/i.test(html) && !/\b(?:style|border|bgcolor|cellpadding)\s*=/i.test(html)
+}
+
 function buildSrcDoc(html: string): string {
+  const extra = isStrippedTable(html) ? LEGACY_TABLE_STYLE : ''
   return (
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta http-equiv="Content-Security-Policy" content="${HTML_CSP}">` +
-    `<base target="_blank"><style>${BASE_STYLE}</style></head><body>${html}</body></html>`
+    `<base target="_blank"><style>${BASE_STYLE}${extra}</style></head><body>${html}</body></html>`
   )
 }
 
