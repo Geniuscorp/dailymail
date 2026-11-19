@@ -110,7 +110,7 @@ export default function CreateMailboxPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+            className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-onaccent transition-colors hover:bg-indigo-700 disabled:opacity-50"
           >
             {submitting ? 'A criar…' : 'Criar conta'}
           </button>

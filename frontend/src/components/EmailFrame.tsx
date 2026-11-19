@@ -91,7 +91,7 @@ export default function EmailFrame({ html }: { html: string }) {
   }
 
   return (
-    <div ref={boxRef} className="overflow-x-auto bg-white">
+    <div ref={boxRef} className="overflow-x-auto" style={{ background: '#fff' }}>
       <div style={{ width: layout.width * layout.scale || '100%', height: layout.height * layout.scale }}>
         <iframe
           ref={frameRef}

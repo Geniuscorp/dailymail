@@ -31,7 +31,7 @@ export default function OverviewTab({ onOpenMailbox }: { onOpenMailbox: (id: num
               aria-pressed={days === period}
               onClick={() => setDays(period)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                days === period ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                days === period ? 'bg-indigo-600 text-onaccent' : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
               {period} dias

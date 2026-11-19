@@ -6,7 +6,7 @@ export const selectClass = inputClass.replace('w-full ', '')
 export const buttonClass =
   'rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50'
 export const primaryButtonClass =
-  'rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50'
+  'rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-onaccent transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50'
 export const dangerButtonClass =
   'rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50'
 

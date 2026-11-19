@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import ThemeToggle from '../components/ThemeToggle'
 import AttachmentsTab from './admin/AttachmentsTab'
 import AuditTab from './admin/AuditTab'
 import BatchesTab from './admin/BatchesTab'
@@ -72,7 +73,10 @@ function AdminLoginForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-gray-50 px-4">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
       <section className="w-full max-w-sm space-y-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <Logo />
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -166,6 +170,7 @@ export default function AdminPage() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <Logo />
           <div className="flex items-center gap-1">
+            <ThemeToggle />
             <Link to="/" className="whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
               Voltar ao site
             </Link>
@@ -209,7 +214,7 @@ export default function AdminPage() {
                 aria-current={tab === item.id ? 'page' : undefined}
                 onClick={() => goTo(item.id)}
                 className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium ${
-                  tab === item.id ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                  tab === item.id ? 'bg-indigo-600 text-onaccent' : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
                 {item.label}
