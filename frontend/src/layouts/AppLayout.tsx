@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import AccountSwitcherPanel from '../components/AccountSwitcherPanel'
+import ThemeToggle from '../components/ThemeToggle'
 import InfoSidebar from '../components/InfoSidebar'
 import { logout as logoutRequest } from '../services/api'
 import { clearToken, forgetAccountByToken, getToken } from '../services/session'
@@ -73,6 +74,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <div className="flex items-center gap-1">
+          <ThemeToggle />
           {loggedIn && (
             <>
               <Link

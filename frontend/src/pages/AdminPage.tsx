@@ -1,29 +1,54 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import AttachmentPreviewModal from '../components/AttachmentPreviewModal'
-import {
-  adminLogin,
-  deleteAdminAttachment,
-  deleteAdminMessage,
-  fetchAdminAttachment,
-  getAdminDashboard,
-  listAdminAttachments,
-  listAdminMailboxes,
-  listAdminMessages,
-  updateAdminMailboxStatus,
-} from '../services/adminApi'
+import { Link } from 'react-router-dom'
+import ThemeToggle from '../components/ThemeToggle'
+import AttachmentsTab from './admin/AttachmentsTab'
+import AuditTab from './admin/AuditTab'
+import BatchesTab from './admin/BatchesTab'
+import MailboxesTab from './admin/MailboxesTab'
+import MessagesTab from './admin/MessagesTab'
+import OverviewTab from './admin/OverviewTab'
+import SystemTab from './admin/SystemTab'
+import { inputClass, Notice, primaryButtonClass } from './admin/ui'
+import { adminErrorMessage, adminLogin } from '../services/adminApi'
 import { clearAdminToken, getAdminToken, setAdminToken } from '../services/session'
-import type { AdminAttachment, AdminDashboard, AdminMailbox, AdminMessage } from '../types'
 
-const PAGE_SIZE = 50
+type TabId = 'overview' | 'mailboxes' | 'messages' | 'attachments' | 'batches' | 'audit' | 'system'
 
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'overview', label: 'Visão geral' },
+  { id: 'mailboxes', label: 'Caixas' },
+  { id: 'messages', label: 'Mensagens' },
+  { id: 'attachments', label: 'Anexos' },
+  { id: 'batches', label: 'Lotes' },
+  { id: 'audit', label: 'Auditoria' },
+  { id: 'system', label: 'Sistema' },
+]
+
+function tabFromHash(): TabId {
+  const hash = window.location.hash.replace('#', '')
+  return TABS.some((tab) => tab.id === hash) ? (hash as TabId) : 'overview'
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+function Logo() {
+  return (
+    <span className="flex items-center gap-2">
+      <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="14" rx="3" className="fill-indigo-600" />
+        <path d="M5 8l6.3 4.2a2 2 0 0 0 2.2 0L20 8" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span className="text-lg font-semibold tracking-tight text-gray-900">DailyMail</span>
+      <span className="hidden rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 sm:inline">Administração</span>
+    </span>
+  )
+}
+
+function loginErrorMessage(error: unknown): string {
+  const text = adminErrorMessage(error, 'Não foi possível entrar. Tenta novamente.')
+  if (text === 'Invalid username or password') return 'Credenciais de administração inválidas.'
+  if (text === 'Admin access is not configured') {
+    return 'O acesso de administração não está configurado neste servidor (falta ADMIN_PASSWORD_HASH).'
+  }
+  return text
 }
 
 function AdminLoginForm({ onSuccess }: { onSuccess: () => void }) {
@@ -40,205 +65,99 @@ function AdminLoginForm({ onSuccess }: { onSuccess: () => void }) {
       const token = await adminLogin(username.trim(), password)
       setAdminToken(token.access_token)
       onSuccess()
-    } catch {
-      setError('Credenciais de administração inválidas.')
+    } catch (err) {
+      setError(loginErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <section className="mx-auto max-w-sm space-y-6">
-      <h1 className="text-2xl font-semibold">Administração</h1>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="admin-username" className="block text-sm font-medium text-gray-700">
-            Utilizador
-          </label>
-          <input
-            id="admin-username"
-            autoComplete="username"
-            required
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
-          />
-        </div>
-        <div>
-          <label htmlFor="admin-password" className="block text-sm font-medium text-gray-700">
-            Senha
-          </label>
-          <input
-            id="admin-password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
-          />
-        </div>
-        {error && (
-          <p role="alert" className="text-sm text-red-600">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded-md bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {submitting ? 'A entrar…' : 'Entrar'}
-        </button>
-      </form>
-    </section>
-  )
-}
-
-function Stats({ dashboard }: { dashboard: AdminDashboard | null }) {
-  if (!dashboard) return null
-
-  const cards = [
-    { label: 'Caixas ativas', value: `${dashboard.active_mailboxes} / ${dashboard.total_mailboxes}` },
-    { label: 'Mensagens', value: dashboard.total_messages },
-    { label: 'Anexos', value: dashboard.total_attachments },
-    { label: 'Armazenamento', value: `${dashboard.storage_used_mb} MB` },
-    { label: 'A expirar (7 dias)', value: dashboard.expiring_soon },
-  ]
-
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-      {cards.map((card) => (
-        <div key={card.label} className="rounded-md border border-gray-200 bg-white p-3">
-          <p className="text-xs text-gray-500">{card.label}</p>
-          <p className="mt-1 text-lg font-semibold text-gray-900">{card.value}</p>
-        </div>
-      ))}
+    <div className="relative flex min-h-screen items-center justify-center bg-gray-50 px-4">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
+      <section className="w-full max-w-sm space-y-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <Logo />
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="admin-username" className="block text-sm font-medium text-gray-700">
+              Utilizador
+            </label>
+            <input
+              id="admin-username"
+              autoComplete="username"
+              required
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              className={`${inputClass} mt-1`}
+            />
+          </div>
+          <div>
+            <label htmlFor="admin-password" className="block text-sm font-medium text-gray-700">
+              Senha
+            </label>
+            <input
+              id="admin-password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className={`${inputClass} mt-1`}
+            />
+          </div>
+          {error && <Notice kind="error">{error}</Notice>}
+          <button type="submit" disabled={submitting} className={`${primaryButtonClass} w-full py-2`}>
+            {submitting ? 'A entrar…' : 'Entrar'}
+          </button>
+        </form>
+        <Link to="/" className="block text-center text-xs text-gray-500 hover:text-gray-700">
+          Voltar ao site
+        </Link>
+      </section>
     </div>
   )
 }
 
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(getAdminToken() !== null)
-  const [dashboard, setDashboard] = useState<AdminDashboard | null>(null)
-  const [mailboxes, setMailboxes] = useState<AdminMailbox[]>([])
-  const [mailboxTotal, setMailboxTotal] = useState(0)
-  const [messages, setMessages] = useState<AdminMessage[]>([])
-  const [messageTotal, setMessageTotal] = useState(0)
-  const [attachments, setAttachments] = useState<AdminAttachment[]>([])
-  const [attachmentTotal, setAttachmentTotal] = useState(0)
-  const [mailboxSearch, setMailboxSearch] = useState('')
-  const [messageSearch, setMessageSearch] = useState('')
-  const [attachmentSearch, setAttachmentSearch] = useState('')
-  const [tab, setTab] = useState<'mailboxes' | 'messages' | 'attachments'>('mailboxes')
-  const [preview, setPreview] = useState<AdminAttachment | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const loadDashboard = useCallback(async () => {
-    try {
-      setDashboard(await getAdminDashboard())
-    } catch {
-      setError('Não foi possível carregar as estatísticas.')
-    }
-  }, [])
-
-  const loadMailboxes = useCallback(async (search: string) => {
-    try {
-      const page = await listAdminMailboxes({ search: search || undefined, limit: PAGE_SIZE })
-      setMailboxes(page.items)
-      setMailboxTotal(page.total)
-    } catch {
-      setError('Não foi possível carregar as caixas.')
-    }
-  }, [])
-
-  const loadMessages = useCallback(async (search: string) => {
-    try {
-      const page = await listAdminMessages({ search: search || undefined, limit: PAGE_SIZE })
-      setMessages(page.items)
-      setMessageTotal(page.total)
-    } catch {
-      setError('Não foi possível carregar as mensagens.')
-    }
-  }, [])
-
-  const loadAttachments = useCallback(async (search: string) => {
-    try {
-      const page = await listAdminAttachments({ search: search || undefined, limit: PAGE_SIZE })
-      setAttachments(page.items)
-      setAttachmentTotal(page.total)
-    } catch {
-      setError('Não foi possível carregar os anexos.')
-    }
-  }, [])
-
-  // `refreshAll` reads the current search terms, so it can be used from the
-  // "Atualizar" button without making the load effect fire on every keystroke.
-  const refreshAll = useCallback(async () => {
-    setError(null)
-    await Promise.all([
-      loadDashboard(),
-      loadMailboxes(mailboxSearch),
-      loadMessages(messageSearch),
-      loadAttachments(attachmentSearch),
-    ])
-  }, [loadDashboard, loadMailboxes, loadMessages, loadAttachments, mailboxSearch, messageSearch, attachmentSearch])
+  const [tab, setTab] = useState<TabId>(tabFromHash)
+  const [focusMailboxId, setFocusMailboxId] = useState<number | null>(null)
+  const [messagesMailboxId, setMessagesMailboxId] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!authenticated) return
-    setError(null)
-    void Promise.all([loadDashboard(), loadMailboxes(''), loadMessages(''), loadAttachments('')])
-  }, [authenticated, loadDashboard, loadMailboxes, loadMessages, loadAttachments])
+    const onHashChange = () => setTab(tabFromHash())
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
 
-  async function toggleMailbox(mailbox: AdminMailbox) {
-    setError(null)
-    setBusy(true)
-    try {
-      await updateAdminMailboxStatus(mailbox.id, mailbox.status === 'blocked' ? 'active' : 'blocked')
-      await Promise.all([loadDashboard(), loadMailboxes(mailboxSearch)])
-    } catch {
-      setError('Não foi possível alterar o estado da caixa.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const goTo = useCallback((next: TabId) => {
+    setTab(next)
+    window.history.replaceState(null, '', `#${next}`)
+  }, [])
 
-  async function removeMessage(message: AdminMessage) {
-    if (!window.confirm('Eliminar esta mensagem e os seus anexos?')) return
-    setError(null)
-    setBusy(true)
-    try {
-      await deleteAdminMessage(message.id)
-      await Promise.all([loadDashboard(), loadMessages(messageSearch), loadAttachments(attachmentSearch)])
-    } catch {
-      setError('Não foi possível eliminar a mensagem.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const openMailbox = useCallback(
+    (id: number) => {
+      setFocusMailboxId(id)
+      goTo('mailboxes')
+    },
+    [goTo],
+  )
 
-  async function removeAttachment(attachment: AdminAttachment) {
-    if (!window.confirm(`Eliminar o anexo "${attachment.original_filename}"?`)) return
-    setError(null)
-    setBusy(true)
-    try {
-      await deleteAdminAttachment(attachment.id)
-      await Promise.all([loadDashboard(), loadAttachments(attachmentSearch)])
-    } catch {
-      setError('Não foi possível eliminar o anexo.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const viewMessages = useCallback(
+    (id: number) => {
+      setMessagesMailboxId(id)
+      goTo('messages')
+    },
+    [goTo],
+  )
+
+  const handleFocusHandled = useCallback(() => setFocusMailboxId(null), [])
 
   function logout() {
     clearAdminToken()
     setAuthenticated(false)
-    setDashboard(null)
-    setMailboxes([])
-    setMessages([])
-    setAttachments([])
   }
 
   if (!authenticated) {
@@ -246,223 +165,84 @@ export default function AdminPage() {
   }
 
   return (
-    <section className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Administração</h1>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => void refreshAll()}
-            className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
-          >
-            Atualizar
-          </button>
-          <button
-            type="button"
-            onClick={logout}
-            className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
-          >
-            Sair
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
-
-      <Stats dashboard={dashboard} />
-
-      <div className="flex gap-2">
-        {(['mailboxes', 'messages', 'attachments'] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setTab(value)}
-            className={`rounded-md px-3 py-1.5 text-sm ${
-              tab === value ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            {value === 'mailboxes' ? 'Caixas' : value === 'messages' ? 'Mensagens' : 'Anexos'}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'mailboxes' && (
-        <div className="space-y-3">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              void loadMailboxes(mailboxSearch)
-            }}
-            className="flex gap-2"
-          >
-            <input
-              value={mailboxSearch}
-              onChange={(event) => setMailboxSearch(event.target.value)}
-              placeholder="Procurar por endereço"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
-            />
+    <div className="min-h-screen bg-gray-50">
+      <header className="sticky top-0 z-30 border-b border-gray-200 bg-white">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+          <Logo />
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <Link to="/" className="whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+              Voltar ao site
+            </Link>
             <button
-              type="submit"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+              type="button"
+              onClick={logout}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
             >
-              Procurar
+              Sair
             </button>
-          </form>
+          </div>
+        </div>
+      </header>
 
-          <p className="text-xs text-gray-500">{mailboxTotal} caixa(s)</p>
-
-          <ul className="divide-y divide-gray-200 rounded-md border border-gray-200 bg-white">
-            {mailboxes.map((mailbox) => (
-              <li key={mailbox.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-gray-900">{mailbox.email_address}</p>
-                  <p className="text-xs text-gray-500">
-                    {mailbox.status} · {mailbox.message_count} mensagem(ns) · criada em{' '}
-                    {formatDate(mailbox.created_at)}
-                  </p>
-                </div>
+      <div className="mx-auto flex max-w-7xl gap-6 px-4 py-6">
+        <nav aria-label="Secções" className="hidden w-48 shrink-0 lg:block">
+          <ul className="sticky top-20 space-y-1">
+            {TABS.map((item) => (
+              <li key={item.id}>
                 <button
                   type="button"
-                  disabled={busy || mailbox.status === 'deleted'}
-                  onClick={() => void toggleMailbox(mailbox)}
-                  className="rounded-md border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+                  aria-current={tab === item.id ? 'page' : undefined}
+                  onClick={() => goTo(item.id)}
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+                    tab === item.id ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
                 >
-                  {mailbox.status === 'deleted'
-                    ? 'Eliminada'
-                    : mailbox.status === 'blocked'
-                      ? 'Ativar'
-                      : 'Bloquear'}
+                  {item.label}
                 </button>
               </li>
             ))}
           </ul>
-          {mailboxes.length === 0 && <p className="text-sm text-gray-500">Sem resultados.</p>}
-        </div>
-      )}
+        </nav>
 
-      {tab === 'messages' && (
-        <div className="space-y-3">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              void loadMessages(messageSearch)
-            }}
-            className="flex gap-2"
-          >
-            <input
-              value={messageSearch}
-              onChange={(event) => setMessageSearch(event.target.value)}
-              placeholder="Procurar por remetente, destinatário ou assunto"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
-            />
-            <button
-              type="submit"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
-            >
-              Procurar
-            </button>
-          </form>
-
-          <p className="text-xs text-gray-500">{messageTotal} mensagem(ns)</p>
-
-          <ul className="divide-y divide-gray-200 rounded-md border border-gray-200 bg-white">
-            {messages.map((message) => (
-              <li key={message.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-gray-900">
-                    {message.subject || '(sem assunto)'}
-                  </p>
-                  <p className="truncate text-xs text-gray-500">
-                    {message.sender} → {message.recipient} · {formatDate(message.received_at)} ·{' '}
-                    {message.attachment_count} anexo(s)
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void removeMessage(message)}
-                  className="rounded-md border border-red-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
-                >
-                  Eliminar
-                </button>
-              </li>
+        <main className="min-w-0 flex-1 space-y-5">
+          <nav aria-label="Secções" className="-mx-1 flex gap-1 overflow-x-auto pb-1 lg:hidden">
+            {TABS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-current={tab === item.id ? 'page' : undefined}
+                onClick={() => goTo(item.id)}
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium ${
+                  tab === item.id ? 'bg-indigo-600 text-onaccent' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {item.label}
+              </button>
             ))}
-          </ul>
-          {messages.length === 0 && <p className="text-sm text-gray-500">Sem resultados.</p>}
-        </div>
-      )}
+          </nav>
 
-      {tab === 'attachments' && (
-        <div className="space-y-3">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              void loadAttachments(attachmentSearch)
-            }}
-            className="flex gap-2"
-          >
-            <input
-              value={attachmentSearch}
-              onChange={(event) => setAttachmentSearch(event.target.value)}
-              placeholder="Procurar por caixa, remetente, assunto ou ficheiro"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+            {TABS.find((item) => item.id === tab)?.label}
+          </h1>
+
+          {tab === 'overview' && <OverviewTab onOpenMailbox={openMailbox} />}
+          {tab === 'mailboxes' && (
+            <MailboxesTab focusId={focusMailboxId} onFocusHandled={handleFocusHandled} onViewMessages={viewMessages} />
+          )}
+          {tab === 'messages' && (
+            <MessagesTab
+              mailboxId={messagesMailboxId}
+              onClearMailbox={() => setMessagesMailboxId(null)}
+              onOpenMailbox={openMailbox}
             />
-            <button
-              type="submit"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
-            >
-              Procurar
-            </button>
-          </form>
-
-          <p className="text-xs text-gray-500">{attachmentTotal} anexo(s)</p>
-
-          <ul className="divide-y divide-gray-200 rounded-md border border-gray-200 bg-white">
-            {attachments.map((attachment) => (
-              <li key={attachment.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-gray-900">
-                    {attachment.original_filename}{' '}
-                    <span className="font-normal text-gray-400">({formatSize(attachment.file_size)})</span>
-                  </p>
-                  <p className="truncate text-xs text-gray-500">
-                    caixa: {attachment.mailbox_email} · de: {attachment.sender} · assunto:{' '}
-                    {attachment.subject || '(sem assunto)'} · {formatDate(attachment.received_at)}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPreview(attachment)}
-                    className="rounded-md border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
-                  >
-                    Abrir
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void removeAttachment(attachment)}
-                    className="rounded-md border border-red-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {attachments.length === 0 && <p className="text-sm text-gray-500">Sem resultados.</p>}
-        </div>
-      )}
-
-      <AttachmentPreviewModal
-        attachment={preview}
-        fetchBlob={fetchAdminAttachment}
-        onClose={() => setPreview(null)}
-      />
-    </section>
+          )}
+          {tab === 'attachments' && <AttachmentsTab />}
+          {tab === 'batches' && <BatchesTab />}
+          {tab === 'audit' && <AuditTab />}
+          {tab === 'system' && <SystemTab />}
+        </main>
+      </div>
+    </div>
   )
 }

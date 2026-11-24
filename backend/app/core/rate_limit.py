@@ -13,15 +13,23 @@ option in the deployment guide, since there the proxy is 127.0.0.1). Without
 that trust every request looks like it comes from the proxy's own address and
 this becomes one shared budget for every real visitor.
 """
+import logging
 import math
 import threading
 import time
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 from typing import Deque, Optional
 
 from fastapi import HTTPException, Request, status
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+
+# Bounds the memory the "who got blocked" report can hold.
+_MAX_TRACKED_BLOCKED = 500
 
 
 class SlidingWindowLimiter:
@@ -30,6 +38,9 @@ class SlidingWindowLimiter:
     def __init__(self) -> None:
         self._hits: dict[str, Deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
+        self._blocked_total = 0
+        # key -> [times blocked, wall-clock time of the last block]
+        self._blocked: dict[str, list[float]] = {}
 
     def hit(
         self,
@@ -55,14 +66,53 @@ class SlidingWindowLimiter:
                 timestamps.popleft()
 
             if len(timestamps) >= limit:
+                self._record_block(key)
                 return timestamps[0] + window_seconds - moment
 
             timestamps.append(moment)
             return None
 
+    def _record_block(self, key: str) -> None:
+        self._blocked_total += 1
+        entry = self._blocked.get(key)
+        if entry is None:
+            if len(self._blocked) >= _MAX_TRACKED_BLOCKED:
+                oldest = min(self._blocked, key=lambda k: self._blocked[k][1])
+                del self._blocked[oldest]
+            entry = self._blocked[key] = [0, 0.0]
+        entry[0] += 1
+        entry[1] = time.time()
+
+    def stats(self, window_seconds: int = 60, top: int = 10) -> dict:
+        """Snapshot for the admin panel: who is being limited, since this process started."""
+        moment = time.monotonic()
+        with self._lock:
+            recent = sum(
+                1 for stamps in self._hits.values() if stamps and stamps[-1] > moment - window_seconds
+            )
+            ranked = sorted(self._blocked.items(), key=lambda item: item[1][0], reverse=True)[:top]
+            blocked = []
+            for key, (count, last) in ranked:
+                scope, _, client = key.partition(":")
+                blocked.append(
+                    {
+                        "scope": scope,
+                        "client": client,
+                        "count": int(count),
+                        "last_blocked_at": datetime.fromtimestamp(last, tz=timezone.utc),
+                    }
+                )
+            return {
+                "blocked_total": self._blocked_total,
+                "recent_clients": recent,
+                "top_blocked": blocked,
+            }
+
     def reset(self) -> None:
         with self._lock:
             self._hits.clear()
+            self._blocked.clear()
+            self._blocked_total = 0
 
 
 limiter = SlidingWindowLimiter()
@@ -80,6 +130,13 @@ def rate_limited(scope: str, limit_setting: str, window_seconds: int = 60):
         limit = getattr(settings, limit_setting)
         retry_after = limiter.hit(f"{scope}:{client}", limit, window_seconds)
         if retry_after is not None:
+            logger.warning(
+                "rate limited scope=%s client=%s xff=%r retry_after=%.0fs",
+                scope,
+                client,
+                request.headers.get("x-forwarded-for"),
+                retry_after,
+            )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Too many requests, try again later",

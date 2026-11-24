@@ -1,23 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import AttachmentList from '../components/AttachmentList'
+import EmailFrame from '../components/EmailFrame'
 import { deleteMessage, getMessage, setMessageRead } from '../services/api'
+import { formatDateTime } from '../utils/datetime'
 import type { MessageDetail } from '../types'
-
-// The sanitised HTML runs in an opaque sandbox: no scripts, no same-origin access,
-// and a CSP that blocks remote resources (images, fonts, styles from the network).
-const HTML_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'"
-
-function buildSrcDoc(html: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8">` +
-    `<meta http-equiv="Content-Security-Policy" content="${HTML_CSP}">` +
-    `<base target="_blank"><style>body{font-family:system-ui,sans-serif;margin:0;padding:12px;color:#111;}</style>` +
-    `</head><body>${html}</body></html>`
-}
-
-function formatDate(value: string | null): string {
-  return value ? new Date(value).toLocaleString('pt-PT', { dateStyle: 'long', timeStyle: 'short' }) : '—'
-}
 
 export default function MessagePage() {
   const { id } = useParams()
@@ -119,20 +106,15 @@ export default function MessagePage() {
             <dt className="text-gray-400">Para</dt>
             <dd className="break-all text-gray-700">{message.recipient}</dd>
             <dt className="text-gray-400">Recebida</dt>
-            <dd className="text-gray-700">{formatDate(message.received_at)}</dd>
+            <dd className="text-gray-700">{formatDateTime(message.received_at, 'long')}</dd>
             <dt className="text-gray-400">Expira</dt>
-            <dd className="text-gray-700">{formatDate(message.expires_at)}</dd>
+            <dd className="text-gray-700">{formatDateTime(message.expires_at, 'long')}</dd>
           </dl>
         </header>
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           {message.html_body_sanitized ? (
-            <iframe
-              title="Conteúdo da mensagem"
-              sandbox="allow-popups allow-popups-to-escape-sandbox"
-              srcDoc={buildSrcDoc(message.html_body_sanitized)}
-              className="h-[60vh] w-full"
-            />
+            <EmailFrame html={message.html_body_sanitized} />
           ) : (
             <pre className="whitespace-pre-wrap break-words p-5 font-sans text-sm text-gray-700">
               {message.text_body || '(sem conteúdo)'}

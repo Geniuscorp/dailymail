@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { listMessages } from '../services/api'
 import { subscribeToMessageStream } from '../services/messageStream'
 import type { MessageSummary } from '../types'
+import { formatDateTime } from '../utils/datetime'
 
 // New mail is pushed over SSE (see messageStream.ts) instead of being
 // polled for, so the inbox updates itself the moment a message is stored —
@@ -14,10 +15,6 @@ const FALLBACK_POLL_INTERVAL_MS = 30000
 const PAGE_SIZE = 50
 // Matches the backend's hard cap (`Query(..., le=100)` on GET /messages).
 const MAX_LIMIT = 100
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })
-}
 
 const AVATAR_COLORS = [
   'bg-indigo-100 text-indigo-700',
@@ -140,7 +137,7 @@ export default function InboxPage() {
                         {message.sender}
                       </span>
                       <time className="shrink-0 text-xs text-gray-400" dateTime={message.received_at}>
-                        {formatDate(message.received_at)}
+                        {formatDateTime(message.received_at)}
                       </time>
                     </span>
                     <span className="mt-0.5 flex items-center gap-2">

@@ -76,7 +76,7 @@ function QuickLoginForm({ onCancel }: { onCancel: () => void }) {
         <button
           type="submit"
           disabled={submitting}
-          className="flex-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+          className="flex-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-onaccent hover:bg-indigo-700 disabled:opacity-50"
         >
           {submitting ? 'A entrar…' : 'Entrar'}
         </button>
@@ -153,7 +153,7 @@ function QuickCreateForm({ onCancel }: { onCancel: () => void }) {
         <button
           type="submit"
           disabled={submitting}
-          className="flex-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+          className="flex-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-onaccent hover:bg-indigo-700 disabled:opacity-50"
         >
           {submitting ? 'A criar…' : 'Criar'}
         </button>

@@ -5,3 +5,77 @@
 body {
   @apply bg-gray-50 text-gray-900;
 }
+
+/* Fields without a background class would otherwise get the browser's own dark grey. */
+@layer base {
+  input,
+  select,
+  textarea {
+    background-color: rgb(var(--c-surface, 255 255 255));
+  }
+}
+
+/*
+ * Dark theme: only variables change. The light values are the fallbacks written in
+ * tailwind.config.js, so anything not listed here keeps its light colour.
+ * Neutrals are a re-stepped scale (not a plain inversion) so muted text keeps its
+ * contrast on the dark surfaces.
+ */
+html.dark {
+  color-scheme: dark;
+
+  --c-surface: 23 26 34;
+  --c-gray-50: 15 17 23;
+  --c-gray-100: 30 34 44;
+  --c-gray-200: 42 47 59;
+  --c-gray-300: 58 64 80;
+  --c-gray-400: 139 147 165;
+  --c-gray-500: 154 162 180;
+  --c-gray-600: 180 187 203;
+  --c-gray-700: 205 211 223;
+  --c-gray-800: 226 230 238;
+  --c-gray-900: 241 243 248;
+
+  --c-indigo-50: 33 36 74;
+  --c-indigo-100: 45 49 96;
+  --c-indigo-200: 62 60 150;
+  --c-indigo-500: 129 140 248;
+
+  --c-red-50: 58 24 28;
+  --c-red-200: 120 40 45;
+  --c-red-300: 150 50 55;
+  --c-red-600: 248 113 113;
+  --c-red-700: 252 165 165;
+
+  --c-emerald-50: 20 50 40;
+  --c-emerald-100: 24 70 56;
+  --c-emerald-700: 110 231 183;
+  --c-emerald-800: 167 243 208;
+
+  --c-amber-50: 61 45 15;
+  --c-amber-100: 80 60 20;
+  --c-amber-700: 252 211 77;
+  --c-amber-800: 253 230 138;
+
+  --c-violet-100: 46 38 80;
+  --c-violet-700: 196 181 253;
+  --c-sky-100: 22 55 75;
+  --c-sky-700: 125 211 252;
+  --c-rose-100: 80 30 50;
+  --c-rose-700: 253 164 175;
+}
+
+/*
+ * Indigo is both a fill (buttons, which must stay dark enough for white text) and a
+ * text colour (links), and one variable cannot serve both. Fills keep the original
+ * indigo-600/700; text on a dark surface uses a lighter step.
+ */
+html.dark .text-indigo-500,
+html.dark .text-indigo-600,
+html.dark .text-indigo-700,
+html.dark .hover\:text-indigo-700:hover {
+  color: rgb(165 180 252);
+}
+html.dark .text-indigo-900 {
+  color: rgb(199 210 254);
+}

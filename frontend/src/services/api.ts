@@ -101,7 +101,54 @@ export async function deleteMessage(id: number): Promise<void> {
   await client.delete(`/messages/${id}`)
 }
 
-export async function fetchAttachment(id: number): Promise<Blob> {
-  const { data } = await client.get<Blob>(`/attachments/${id}/download`, { responseType: 'blob' })
-  return data
+export class DownloadStalledError extends Error {
+  constructor() {
+    super('download stalled')
+    this.name = 'DownloadStalledError'
+  }
+}
+
+// A transfer that stops making progress (a flaky route or a middlebox that
+// holds the connection) would otherwise wait forever with no error at all.
+const DOWNLOAD_STALL_MS = 30_000
+
+export interface FetchAttachmentOptions {
+  signal?: AbortSignal
+  onProgress?: (loaded: number, total: number | null) => void
+}
+
+export async function fetchAttachment(id: number, options: FetchAttachmentOptions = {}): Promise<Blob> {
+  const controller = new AbortController()
+  let stalled = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const armStallTimer = () => {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      stalled = true
+      controller.abort()
+    }, DOWNLOAD_STALL_MS)
+  }
+  const onCallerAbort = () => controller.abort()
+  if (options.signal?.aborted) controller.abort()
+  options.signal?.addEventListener('abort', onCallerAbort)
+
+  armStallTimer()
+  try {
+    const { data } = await client.get<Blob>(`/attachments/${id}/download`, {
+      responseType: 'blob',
+      signal: controller.signal,
+      onDownloadProgress: (event) => {
+        armStallTimer()
+        options.onProgress?.(event.loaded, event.total ?? null)
+      },
+    })
+    return data
+  } catch (error) {
+    if (stalled) throw new DownloadStalledError()
+    throw error
+  } finally {
+    if (timer) clearTimeout(timer)
+    options.signal?.removeEventListener('abort', onCallerAbort)
+  }
 }
