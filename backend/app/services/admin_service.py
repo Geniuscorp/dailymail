@@ -260,18 +260,57 @@ class AdminService:
     # --- Attachments ----------------------------------------------------
 
     def list_attachments(
-        self, limit: int, offset: int, message_id: Optional[int]
+        self,
+        limit: int,
+        offset: int,
+        message_id: Optional[int],
+        search: Optional[str] = None,
     ) -> tuple[int, list[AdminAttachment]]:
-        query = self.db.query(Attachment)
+        query = (
+            self.db.query(Attachment, Message, Mailbox)
+            .join(Message, Attachment.message_id == Message.id)
+            .join(Mailbox, Message.mailbox_id == Mailbox.id)
+        )
         if message_id is not None:
             query = query.filter(Attachment.message_id == message_id)
+        if search:
+            needle = f"%{search.strip().lower()}%"
+            query = query.filter(
+                or_(
+                    func.lower(Attachment.original_filename).like(needle),
+                    func.lower(Mailbox.email_address).like(needle),
+                    func.lower(Message.sender).like(needle),
+                    func.lower(func.coalesce(Message.subject, "")).like(needle),
+                )
+            )
 
         total = query.count()
         rows = query.order_by(Attachment.id.desc()).limit(limit).offset(offset).all()
-        return total, [AdminAttachment.model_validate(row) for row in rows]
+        items = [
+            AdminAttachment(
+                id=attachment.id,
+                message_id=attachment.message_id,
+                original_filename=attachment.original_filename,
+                mime_type=attachment.mime_type,
+                file_size=attachment.file_size,
+                created_at=attachment.created_at,
+                mailbox_id=mailbox.id,
+                mailbox_email=mailbox.email_address,
+                sender=message.sender,
+                subject=message.subject,
+                received_at=message.received_at,
+            )
+            for attachment, message, mailbox in rows
+        ]
+        return total, items
 
     def get_attachment(self, attachment_id: int) -> Optional[Attachment]:
         return self.db.query(Attachment).filter(Attachment.id == attachment_id).first()
+
+    def read_attachment(self, attachment: Attachment) -> bytes:
+        if self.storage is None:
+            raise StorageError("attachment storage is not available")
+        return self.storage.get(attachment.storage_key)
 
     def delete_attachment(self, admin: AdminUser, attachment: Attachment) -> None:
         if self.storage is None:

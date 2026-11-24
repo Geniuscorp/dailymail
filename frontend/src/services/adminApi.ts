@@ -2,6 +2,7 @@ import axios from 'axios'
 import { API_BASE_URL } from './api'
 import { clearAdminToken, getAdminToken } from './session'
 import type {
+  AdminAttachmentPage,
   AdminDashboard,
   AdminMailbox,
   AdminMailboxPage,
@@ -71,4 +72,23 @@ export async function listAdminMessages(params: {
 
 export async function deleteAdminMessage(id: number): Promise<void> {
   await admin.delete(`/messages/${id}`)
+}
+
+export async function listAdminAttachments(params: {
+  search?: string
+  message_id?: number
+  limit?: number
+  offset?: number
+}): Promise<AdminAttachmentPage> {
+  const { data } = await admin.get<AdminAttachmentPage>('/attachments', { params })
+  return data
+}
+
+export async function deleteAdminAttachment(id: number): Promise<void> {
+  await admin.delete(`/attachments/${id}`)
+}
+
+export async function fetchAdminAttachment(id: number): Promise<Blob> {
+  const { data } = await admin.get<Blob>(`/attachments/${id}/download`, { responseType: 'blob' })
+  return data
 }

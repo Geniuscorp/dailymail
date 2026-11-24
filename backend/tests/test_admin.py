@@ -320,8 +320,81 @@ class TestAdminMessages:
         assert listed.status_code == 200
         items = listed.json()["items"]
         assert [item["original_filename"] for item in items] == ["conta.pdf"]
+        # Which mailbox and sender it came from, not just the filename.
+        assert items[0]["mailbox_email"] == address
+        assert items[0]["sender"] == "remetente@example.org"
+        assert items[0]["subject"] == "Assunto admin"
 
         assert client.delete(
             f"/api/admin/attachments/{items[0]['id']}", headers=headers
         ).status_code == 204
         assert storage.objects == {}
+
+
+class TestAdminAttachmentSearchAndDownload:
+    def test_search_matches_mailbox_sender_subject_and_filename(self, storage):
+        address, _, _ = _mailbox("att-search")
+        _deliver(address, [_attachment("fatura-rara.pdf")])
+        headers = _admin_headers()
+
+        for needle in (address, "remetente@example.org", "Assunto admin", "fatura-rara"):
+            response = client.get(
+                "/api/admin/attachments", params={"search": needle}, headers=headers
+            )
+            assert response.status_code == 200, needle
+            filenames = [item["original_filename"] for item in response.json()["items"]]
+            assert "fatura-rara.pdf" in filenames, needle
+
+        no_match = client.get(
+            "/api/admin/attachments", params={"search": "nao-existe-xyz"}, headers=headers
+        )
+        assert no_match.json()["items"] == []
+
+    def test_download_returns_bytes_and_honours_inline(self, storage):
+        address, _, _ = _mailbox("att-dl")
+        _deliver(address, [_attachment("doc.pdf")])
+        headers = _admin_headers()
+        attachment_id = client.get(
+            "/api/admin/attachments", params={"message_id": _admin_messages(headers, address)[0]["id"]}, headers=headers
+        ).json()["items"][0]["id"]
+
+        downloaded = client.get(f"/api/admin/attachments/{attachment_id}/download", headers=headers)
+        assert downloaded.status_code == 200
+        assert downloaded.content == PDF
+        assert "attachment" in downloaded.headers["content-disposition"]
+
+        inline = client.get(
+            f"/api/admin/attachments/{attachment_id}/download",
+            params={"inline": "true"},
+            headers=headers,
+        )
+        assert "inline" in inline.headers["content-disposition"]
+        assert inline.headers["content-security-policy"]
+
+    def test_download_requires_admin_auth(self, storage):
+        address, _, _ = _mailbox("att-noauth")
+        _deliver(address, [_attachment("doc.pdf")])
+        headers = _admin_headers()
+        attachment_id = client.get(
+            "/api/admin/attachments", params={"message_id": _admin_messages(headers, address)[0]["id"]}, headers=headers
+        ).json()["items"][0]["id"]
+
+        # No Authorization header at all (missing credentials) is a 403 here,
+        # the same as every other admin route without one; a *rejected*
+        # token is what actually returns 401.
+        assert client.get(f"/api/admin/attachments/{attachment_id}/download").status_code == 403
+
+    def test_download_missing_attachment_is_404(self, storage):
+        headers = _admin_headers()
+        assert client.get("/api/admin/attachments/999999/download", headers=headers).status_code == 404
+
+    def test_download_without_storage_is_503(self, storage, monkeypatch):
+        address, _, _ = _mailbox("att-nostorage")
+        _deliver(address, [_attachment("doc.pdf")])
+        headers = _admin_headers()
+        attachment_id = client.get(
+            "/api/admin/attachments", params={"message_id": _admin_messages(headers, address)[0]["id"]}, headers=headers
+        ).json()["items"][0]["id"]
+
+        monkeypatch.setattr("app.api.admin.get_object_storage", _raise_not_configured)
+        assert client.get(f"/api/admin/attachments/{attachment_id}/download", headers=headers).status_code == 503

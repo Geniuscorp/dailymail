@@ -65,6 +65,27 @@ export interface AdminMailboxPage {
   items: AdminMailbox[]
 }
 
+export interface AdminAttachment {
+  id: number
+  message_id: number
+  original_filename: string
+  mime_type: string
+  file_size: number
+  created_at: string
+  mailbox_id: number
+  mailbox_email: string
+  sender: string
+  subject: string | null
+  received_at: string
+}
+
+export interface AdminAttachmentPage {
+  total: number
+  limit: number
+  offset: number
+  items: AdminAttachment[]
+}
+
 export interface AdminMessage {
   id: number
   mailbox_id: number

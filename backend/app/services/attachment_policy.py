@@ -7,6 +7,7 @@ MIME type is never trusted; the stored MIME type comes from the allow-list.
 import re
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import quote
 
 OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 ZIP_MAGIC = b"PK\x03\x04"
@@ -38,6 +39,17 @@ ALLOWED_FORMATS: dict[str, FormatRule] = {
 
 MAX_FILENAME_LENGTH = 255
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+# Shared between the mailbox and admin download routes: formats a browser can
+# display safely inline; everything else is download-only.
+INLINE_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "gif"}
+# Applied to inline responses so an embedded document cannot reach the app origin.
+INLINE_CONTENT_SECURITY_POLICY = "sandbox; default-src 'none'"
+
+
+def content_disposition(filename: str, inline: bool) -> str:
+    kind = "inline" if inline else "attachment"
+    return f"{kind}; filename*=UTF-8''{quote(filename)}"
 
 
 class AttachmentRejectedError(Exception):

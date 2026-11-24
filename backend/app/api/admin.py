@@ -1,7 +1,7 @@
 """Admin API: authentication, dashboard and management of mailboxes, batches, messages."""
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -22,6 +22,13 @@ from app.schemas.admin import (
 )
 from app.schemas.mailbox import TokenResponse
 from app.services.admin_service import AdminService
+from app.services.attachment_policy import (
+    ALLOWED_FORMATS,
+    INLINE_CONTENT_SECURITY_POLICY,
+    INLINE_EXTENSIONS,
+    content_disposition,
+    extension_of,
+)
 from app.storage import StorageNotConfiguredError, get_object_storage
 from app.storage.base import ObjectStorage, StorageError
 
@@ -181,13 +188,47 @@ def delete_message(
 @router.get("/attachments", response_model=AdminAttachmentPage)
 def list_attachments(
     message_id: Optional[int] = Query(None, ge=1),
+    search: Optional[str] = Query(None, max_length=254),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    total, items = _service(db).list_attachments(limit, offset, message_id)
+    total, items = _service(db).list_attachments(limit, offset, message_id, search)
     return AdminAttachmentPage(total=total, limit=limit, offset=offset, items=items)
+
+
+@router.get("/attachments/{attachment_id}/download")
+def download_attachment(
+    attachment_id: int,
+    inline: bool = Query(False),
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    # Admin can read any attachment's bytes, from any mailbox - unlike the
+    # mailbox-scoped /api/attachments/{id}/download, there is no ownership
+    # check here, and expired messages are still reachable (an admin may
+    # need to inspect one right before it's purged).
+    service = _service(db)
+    attachment = service.get_attachment(attachment_id)
+    if attachment is None:
+        raise _not_found("Attachment")
+    try:
+        data = service.read_attachment(attachment)
+    except StorageError as exc:
+        raise _storage_unavailable(exc) from exc
+
+    extension = extension_of(attachment.original_filename)
+    display_inline = inline and extension in INLINE_EXTENSIONS and extension in ALLOWED_FORMATS
+    headers = {
+        "Content-Disposition": content_disposition(attachment.original_filename, display_inline),
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+        "Content-Length": str(len(data)),
+    }
+    if display_inline:
+        headers["Content-Security-Policy"] = INLINE_CONTENT_SECURITY_POLICY
+    return Response(content=data, media_type=attachment.mime_type, headers=headers)
 
 
 @router.delete("/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)

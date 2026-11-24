@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchAttachment } from '../services/api'
 import type { AttachmentSummary } from '../types'
-
-const PDF_TYPE = 'application/pdf'
+import AttachmentPreviewModal from './AttachmentPreviewModal'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -40,6 +39,7 @@ function ImagePreview({ attachment }: { attachment: AttachmentSummary }) {
 export default function AttachmentList({ attachments }: { attachments: AttachmentSummary[] }) {
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [preview, setPreview] = useState<AttachmentSummary | null>(null)
 
   if (attachments.length === 0) return null
 
@@ -56,26 +56,6 @@ export default function AttachmentList({ attachments }: { attachments: Attachmen
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch {
       setError('Não foi possível transferir o anexo.')
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  async function openPdf(attachment: AttachmentSummary) {
-    setError(null)
-    setBusyId(attachment.id)
-    const tab = window.open('about:blank', '_blank')
-    try {
-      const blob = await fetchAttachment(attachment.id)
-      const url = URL.createObjectURL(new Blob([blob], { type: PDF_TYPE }))
-      if (tab) {
-        tab.opener = null
-        tab.location.href = url
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
-    } catch {
-      tab?.close()
-      setError('Não foi possível abrir o anexo.')
     } finally {
       setBusyId(null)
     }
@@ -98,16 +78,14 @@ export default function AttachmentList({ attachments }: { attachments: Attachmen
                 <p className="text-xs text-gray-400">{formatSize(attachment.file_size)}</p>
               </div>
               <div className="flex gap-2">
-                {attachment.mime_type === PDF_TYPE && (
-                  <button
-                    type="button"
-                    disabled={busyId !== null}
-                    onClick={() => void openPdf(attachment)}
-                    className="rounded-lg border border-gray-200 px-3 py-1 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Abrir
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={busyId !== null}
+                  onClick={() => setPreview(attachment)}
+                  className="rounded-lg border border-gray-200 px-3 py-1 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Abrir
+                </button>
                 <button
                   type="button"
                   disabled={busyId !== null}
@@ -122,6 +100,12 @@ export default function AttachmentList({ attachments }: { attachments: Attachmen
           </li>
         ))}
       </ul>
+
+      <AttachmentPreviewModal
+        attachment={preview}
+        fetchBlob={fetchAttachment}
+        onClose={() => setPreview(null)}
+      />
     </section>
   )
 }

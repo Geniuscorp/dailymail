@@ -1,19 +1,29 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import AttachmentPreviewModal from '../components/AttachmentPreviewModal'
 import {
   adminLogin,
+  deleteAdminAttachment,
   deleteAdminMessage,
+  fetchAdminAttachment,
   getAdminDashboard,
+  listAdminAttachments,
   listAdminMailboxes,
   listAdminMessages,
   updateAdminMailboxStatus,
 } from '../services/adminApi'
 import { clearAdminToken, getAdminToken, setAdminToken } from '../services/session'
-import type { AdminDashboard, AdminMailbox, AdminMessage } from '../types'
+import type { AdminAttachment, AdminDashboard, AdminMailbox, AdminMessage } from '../types'
 
 const PAGE_SIZE = 50
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function AdminLoginForm({ onSuccess }: { onSuccess: () => void }) {
@@ -115,9 +125,13 @@ export default function AdminPage() {
   const [mailboxTotal, setMailboxTotal] = useState(0)
   const [messages, setMessages] = useState<AdminMessage[]>([])
   const [messageTotal, setMessageTotal] = useState(0)
+  const [attachments, setAttachments] = useState<AdminAttachment[]>([])
+  const [attachmentTotal, setAttachmentTotal] = useState(0)
   const [mailboxSearch, setMailboxSearch] = useState('')
   const [messageSearch, setMessageSearch] = useState('')
-  const [tab, setTab] = useState<'mailboxes' | 'messages'>('mailboxes')
+  const [attachmentSearch, setAttachmentSearch] = useState('')
+  const [tab, setTab] = useState<'mailboxes' | 'messages' | 'attachments'>('mailboxes')
+  const [preview, setPreview] = useState<AdminAttachment | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -149,18 +163,33 @@ export default function AdminPage() {
     }
   }, [])
 
+  const loadAttachments = useCallback(async (search: string) => {
+    try {
+      const page = await listAdminAttachments({ search: search || undefined, limit: PAGE_SIZE })
+      setAttachments(page.items)
+      setAttachmentTotal(page.total)
+    } catch {
+      setError('Não foi possível carregar os anexos.')
+    }
+  }, [])
+
   // `refreshAll` reads the current search terms, so it can be used from the
   // "Atualizar" button without making the load effect fire on every keystroke.
   const refreshAll = useCallback(async () => {
     setError(null)
-    await Promise.all([loadDashboard(), loadMailboxes(mailboxSearch), loadMessages(messageSearch)])
-  }, [loadDashboard, loadMailboxes, loadMessages, mailboxSearch, messageSearch])
+    await Promise.all([
+      loadDashboard(),
+      loadMailboxes(mailboxSearch),
+      loadMessages(messageSearch),
+      loadAttachments(attachmentSearch),
+    ])
+  }, [loadDashboard, loadMailboxes, loadMessages, loadAttachments, mailboxSearch, messageSearch, attachmentSearch])
 
   useEffect(() => {
     if (!authenticated) return
     setError(null)
-    void Promise.all([loadDashboard(), loadMailboxes(''), loadMessages('')])
-  }, [authenticated, loadDashboard, loadMailboxes, loadMessages])
+    void Promise.all([loadDashboard(), loadMailboxes(''), loadMessages(''), loadAttachments('')])
+  }, [authenticated, loadDashboard, loadMailboxes, loadMessages, loadAttachments])
 
   async function toggleMailbox(mailbox: AdminMailbox) {
     setError(null)
@@ -181,9 +210,23 @@ export default function AdminPage() {
     setBusy(true)
     try {
       await deleteAdminMessage(message.id)
-      await Promise.all([loadDashboard(), loadMessages(messageSearch)])
+      await Promise.all([loadDashboard(), loadMessages(messageSearch), loadAttachments(attachmentSearch)])
     } catch {
       setError('Não foi possível eliminar a mensagem.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeAttachment(attachment: AdminAttachment) {
+    if (!window.confirm(`Eliminar o anexo "${attachment.original_filename}"?`)) return
+    setError(null)
+    setBusy(true)
+    try {
+      await deleteAdminAttachment(attachment.id)
+      await Promise.all([loadDashboard(), loadAttachments(attachmentSearch)])
+    } catch {
+      setError('Não foi possível eliminar o anexo.')
     } finally {
       setBusy(false)
     }
@@ -195,6 +238,7 @@ export default function AdminPage() {
     setDashboard(null)
     setMailboxes([])
     setMessages([])
+    setAttachments([])
   }
 
   if (!authenticated) {
@@ -232,7 +276,7 @@ export default function AdminPage() {
       <Stats dashboard={dashboard} />
 
       <div className="flex gap-2">
-        {(['mailboxes', 'messages'] as const).map((value) => (
+        {(['mailboxes', 'messages', 'attachments'] as const).map((value) => (
           <button
             key={value}
             type="button"
@@ -241,7 +285,7 @@ export default function AdminPage() {
               tab === value ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            {value === 'mailboxes' ? 'Caixas' : 'Mensagens'}
+            {value === 'mailboxes' ? 'Caixas' : value === 'messages' ? 'Mensagens' : 'Anexos'}
           </button>
         ))}
       </div>
@@ -351,6 +395,74 @@ export default function AdminPage() {
           {messages.length === 0 && <p className="text-sm text-gray-500">Sem resultados.</p>}
         </div>
       )}
+
+      {tab === 'attachments' && (
+        <div className="space-y-3">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              void loadAttachments(attachmentSearch)
+            }}
+            className="flex gap-2"
+          >
+            <input
+              value={attachmentSearch}
+              onChange={(event) => setAttachmentSearch(event.target.value)}
+              placeholder="Procurar por caixa, remetente, assunto ou ficheiro"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+            />
+            <button
+              type="submit"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+            >
+              Procurar
+            </button>
+          </form>
+
+          <p className="text-xs text-gray-500">{attachmentTotal} anexo(s)</p>
+
+          <ul className="divide-y divide-gray-200 rounded-md border border-gray-200 bg-white">
+            {attachments.map((attachment) => (
+              <li key={attachment.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-gray-900">
+                    {attachment.original_filename}{' '}
+                    <span className="font-normal text-gray-400">({formatSize(attachment.file_size)})</span>
+                  </p>
+                  <p className="truncate text-xs text-gray-500">
+                    caixa: {attachment.mailbox_email} · de: {attachment.sender} · assunto:{' '}
+                    {attachment.subject || '(sem assunto)'} · {formatDate(attachment.received_at)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreview(attachment)}
+                    className="rounded-md border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+                  >
+                    Abrir
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void removeAttachment(attachment)}
+                    className="rounded-md border border-red-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {attachments.length === 0 && <p className="text-sm text-gray-500">Sem resultados.</p>}
+        </div>
+      )}
+
+      <AttachmentPreviewModal
+        attachment={preview}
+        fetchBlob={fetchAdminAttachment}
+        onClose={() => setPreview(null)}
+      />
     </section>
   )
 }

@@ -84,14 +84,20 @@ class AdminMessagePage(BaseModel):
 
 
 class AdminAttachment(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     message_id: int
     original_filename: str
     mime_type: str
     file_size: int
     created_at: datetime
+    # Who it belongs to and who sent it - built by joining Message and
+    # Mailbox in the service, not present on the Attachment row itself, so
+    # this model is constructed field-by-field rather than from_attributes.
+    mailbox_id: int
+    mailbox_email: str
+    sender: str
+    subject: Optional[str] = None
+    received_at: datetime
 
 
 class AdminAttachmentPage(BaseModel):
