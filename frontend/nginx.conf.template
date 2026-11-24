@@ -46,6 +46,19 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # nginx's bundled mime.types has no entry for .mjs (ES module
+    # JavaScript — used by pdf.js's worker script, see
+    # AttachmentPreviewModal.tsx) and falls back to application/octet-stream
+    # for it, which browsers refuse to execute as a module. This surfaced as
+    # every PDF preview failing ("Não foi possível mostrar ...").
+    location ~* \.mjs$ {
+        default_type text/javascript;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        try_files $uri =404;
+    }
+
     # FastAPI's own interactive API docs (Swagger UI / ReDoc), linked from the
     # app's sidebar for anyone who wants to call the API directly. Proxied on
     # the same origin so it stays reachable without exposing the backend's
