@@ -65,11 +65,15 @@ function PdfPages({ data, filename }: { data: ArrayBuffer; filename: string }) {
           const page = await pdf.getPage(pageNumber)
           const viewport = page.getViewport({ scale: 1.3 * pixelRatio })
           const canvas = document.createElement('canvas')
+          // The pixel buffer is rendered at device resolution for sharpness
+          // (canvas.width/height below); the *displayed* size is left to
+          // CSS instead of also pinning it in pixels here - width: 100% with
+          // height: auto scales the canvas to fit its container at its own
+          // aspect ratio, which a fixed pixel size doesn't reliably do
+          // against a narrower (phone) viewport.
           canvas.width = Math.ceil(viewport.width)
           canvas.height = Math.ceil(viewport.height)
-          canvas.style.width = `${Math.ceil(viewport.width / pixelRatio)}px`
-          canvas.style.height = `${Math.ceil(viewport.height / pixelRatio)}px`
-          canvas.className = 'mx-auto mb-3 block max-w-full rounded shadow'
+          canvas.className = 'mx-auto mb-3 block h-auto w-full max-w-2xl rounded shadow'
           const context = canvas.getContext('2d')
           if (!context) continue
           await page.render({ canvasContext: context, viewport }).promise
@@ -151,39 +155,41 @@ export default function AttachmentPreviewModal({
   const previewable = attachment.mime_type === PDF_TYPE || isImageType(attachment.mime_type)
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/70 p-3 sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/90" onClick={onClose}>
+      {/* A solid bar, not text floating over the dimmed backdrop: at the
+          very top of the screen it would otherwise sit right against the
+          real page's own header behind it, and semi-transparent buttons
+          there read as barely-there and easy to confuse with it. */}
       <div
-        className="flex items-center justify-between gap-3 pb-3 pr-14"
+        className="flex shrink-0 items-center justify-between gap-3 bg-gray-900 px-3 py-2.5 shadow-md sm:px-4"
         onClick={(event) => event.stopPropagation()}
       >
         <p className="min-w-0 truncate text-sm font-medium text-white" title={attachment.original_filename}>
           {attachment.original_filename}
         </p>
-        {downloadUrl && (
-          <a
-            href={downloadUrl}
-            download={attachment.original_filename}
-            className="shrink-0 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
+        <div className="flex shrink-0 items-center gap-2">
+          {downloadUrl && (
+            <a
+              href={downloadUrl}
+              download={attachment.original_filename}
+              className="rounded-lg bg-white/15 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/25"
+            >
+              Descarregar
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-lg leading-none text-white transition-colors hover:bg-white/25"
           >
-            Descarregar
-          </a>
-        )}
+            ✕
+          </button>
+        </div>
       </div>
 
-      {/* Always in the same corner regardless of what the toolbar above
-          shows (pdf.js's own canvas has none, but a future viewer might),
-          and large enough to be a clear, easy tap target on a phone. */}
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Fechar"
-        className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-xl leading-none text-white transition-colors hover:bg-white/25 sm:right-6 sm:top-6"
-      >
-        ✕
-      </button>
-
       <div
-        className="min-h-0 flex-1 overflow-hidden rounded-xl bg-white"
+        className="min-h-0 flex-1 overflow-hidden bg-gray-100"
         onClick={(event) => event.stopPropagation()}
       >
         {error && <p className="p-6 text-center text-sm text-red-600">{error}</p>}
